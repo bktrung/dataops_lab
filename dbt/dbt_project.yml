@@ -2,7 +2,7 @@ name: 'dbt_sqlserver_project'
 version: '1.0.0'
 config-version: 2
 
-profile: 'dbt_airflow_project'
+profile: 'adventureworks'
 
 model-paths: ["models"]
 analysis-paths: ["analyses"]
@@ -25,5 +25,5 @@ models:
       +materialized: table
       +schema: silver
     gold:
-      +materialized: table 
+      +materialized: table
       +schema: gold
