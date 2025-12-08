@@ -1,0 +1,17 @@
+name: customer_checkpoint
+config_version: 1.0
+class_name: SimpleCheckpoint
+run_name_template: "%Y%m%d-%H%M%S-customer-validation"
+
+validations:
+  - batch_request:
+      datasource_name: adventureworks_datasource
+      data_connector_name: default_runtime_data_connector
+      data_asset_name: Sales.Customer
+      runtime_parameters:
+        query: |
+          SELECT TOP 1000 *
+          FROM Sales.Customer
+      batch_identifiers:
+        default_identifier_name: customer_batch
+    expectation_suite_name: customer_quality_suite
