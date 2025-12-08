@@ -10,7 +10,12 @@ with sales_order_header as (
         PurchaseOrderNumber as purchase_order_number,
         CustomerID as customer_id,
         SalesPersonID as sales_person_id,
-        TerritoryID as territory_id
+        TerritoryID as territory_id,
+        TaxAmt as tax_amount,
+        Freight as freight_amount,
+        SubTotal as subtotal_amount,
+        TotalDue as total_due_amount,
+        ModifiedDate as last_modified_date
     from {{ source('adventureworks', 'SalesOrderHeader') }}
 ),
 
@@ -38,6 +43,11 @@ select
     h.customer_id,
     h.sales_person_id,
     h.territory_id,
+    h.tax_amount,
+    h.freight_amount,
+    h.subtotal_amount,
+    h.total_due_amount,
+    h.last_modified_date,
     d.order_detail_id,
     d.product_id,
     d.order_qty,
