@@ -95,5 +95,5 @@ test_failure = PythonOperator(
 
 # Set task dependencies
 # Test failure runs independently so it doesn't block the pipeline
-log_start >> [test_failure, dbt_run_bronze]
+log_start >> [dbt_run_bronze]
 dbt_run_bronze >> dbt_test_bronze >> log_complete
