@@ -79,6 +79,7 @@ services:
     build:
       context: ./dbt
       dockerfile: Dockerfile
+    container_name: dbt
     depends_on:
       - sqlserver
     environment:

@@ -24,25 +24,25 @@ with DAG(
     # --- Bronze Layer ---
     dbt_run_bronze = BashOperator(
         task_id='dbt_run_bronze',
-        bash_command='docker exec dbt_airflow_project-dbt-1 dbt run --select path:models/bronze',
+        bash_command='docker exec dbt dbt run --select path:models/bronze',
     )
 
     # --- Silver Layer ---
     dbt_run_silver = BashOperator(
         task_id='dbt_run_silver',
-        bash_command='docker exec dbt_airflow_project-dbt-1 dbt run --select path:models/silver',
+        bash_command='docker exec dbt dbt run --select path:models/silver',
     )
 
     # --- Gold Layer ---
     dbt_run_gold = BashOperator(
         task_id='dbt_run_gold',
-        bash_command='docker exec dbt_airflow_project-dbt-1 dbt run --select path:models/gold',
+        bash_command='docker exec dbt dbt run --select path:models/gold',
     )
 
     # --- Tests (after all transformations) ---
     dbt_test = BashOperator(
         task_id='dbt_test',
-        bash_command='docker exec dbt_airflow_project-dbt-1 dbt test',
+        bash_command='docker exec dbt dbt test',
     )
 
     # --- Task dependencies: Bronze → Silver → Gold → Test ---
