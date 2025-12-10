@@ -61,10 +61,10 @@ validate_orders = PythonOperator(
 
 generate_docs = BashOperator(
     task_id="generate_data_docs",
-    # GE prompts “Would you like to proceed? [Y/n]”; --assume-yes makes it non-interactive in Airflow
+    # GE prompts "Would you like to proceed? [Y/n]"; pipe "Y" to make it non-interactive in Airflow
     bash_command=(
         "cd /opt/airflow/dbt/great_expectations && "
-        "great_expectations docs build --assume-yes"
+        "echo 'Y' | great_expectations docs build"
     ),
     dag=dag,
 )
