@@ -44,6 +44,34 @@ models:
         description: Total amount for line item
         tests:
           - not_null
+      - name: order_channel
+        description: Online/Offline order channel
+      - name: customer_id
+        description: Customer identifier
+        tests:
+          - not_null
+      - name: product_id
+        description: Product identifier
+        tests:
+          - not_null
+      - name: territory_id
+        description: Territory identifier on order
+      - name: line_net
+        description: Net line amount after discount
+        tests:
+          - positive_values
+      - name: tax_amount
+        description: Header tax amount
+        tests:
+          - positive_values
+      - name: freight_amount
+        description: Header freight amount
+        tests:
+          - positive_values
+      - name: total_due_amount
+        description: Header total due
+        tests:
+          - positive_values
     tests:
       - dbt_utils.unique_combination_of_columns:
           combination_of_columns:

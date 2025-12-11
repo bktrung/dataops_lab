@@ -35,6 +35,35 @@ models:
         tests:
           - not_null
 
+  - name: brnz_products
+    description: "Bronze layer product data from AdventureWorks"
+    columns:
+      - name: ProductID
+        description: "Primary key for product"
+        tests:
+          - unique
+          - not_null
+      - name: ProductName
+        description: "Product name"
+      - name: ProductNumber
+        description: "Product number/SKU"
+      - name: StandardCost
+        description: "Standard cost"
+        tests:
+          - positive_values
+      - name: ListPrice
+        description: "List price"
+        tests:
+          - positive_values
+      - name: ProductSubcategoryID
+        description: "Subcategory id"
+      - name: ProductCategoryID
+        description: "Category id"
+      - name: last_modified_date
+        description: "Last modified timestamp"
+        tests:
+          - not_null
+
   - name: brnz_sales_orders
     description: "Bronze layer sales order data"
     columns:
@@ -91,8 +120,35 @@ models:
       - name: territory_id
         description: "Territory ID"
 
+      - name: tax_amount
+        description: "Tax amount"
+        tests:
+          - positive_values
+
+      - name: freight_amount
+        description: "Freight amount"
+        tests:
+          - positive_values
+
+      - name: subtotal_amount
+        description: "Order subtotal"
+        tests:
+          - positive_values
+
+      - name: total_due_amount
+        description: "Total due"
+        tests:
+          - positive_values
+
+      - name: last_modified_date
+        description: "Last modified timestamp"
+        tests:
+          - not_null
+
       - name: order_detail_id
         description: "Order detail ID"
+        tests:
+          - not_null
 
       - name: product_id
         description: "Product ID"
@@ -116,3 +172,44 @@ models:
         description: "Line total"
         tests:
           - positive_values
+
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - sales_order_id
+            - order_detail_id
+
+  - name: brnz_territory
+    description: "Bronze layer sales territory data"
+    columns:
+      - name: territory_id
+        description: "Territory id"
+        tests:
+          - unique
+          - not_null
+      - name: territory_name
+        description: "Territory name"
+      - name: territory_group
+        description: "Territory grouping"
+      - name: country_region_code
+        description: "Country/region code"
+      - name: sales_ytd
+        description: "Year-to-date sales"
+        tests:
+          - positive_values
+      - name: sales_last_year
+        description: "Sales last year"
+        tests:
+          - positive_values
+      - name: cost_ytd
+        description: "Year-to-date cost"
+        tests:
+          - positive_values
+      - name: cost_last_year
+        description: "Cost last year"
+        tests:
+          - positive_values
+      - name: last_modified_date
+        description: "Last modified timestamp"
+        tests:
+          - not_null
