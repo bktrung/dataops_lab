@@ -9,10 +9,11 @@ NC='\033[0m'
 
 ENVIRONMENT=$1
 BACKUP_DIR=$2
+FORCE=$3
 
 if [ -z "$ENVIRONMENT" ] || [ -z "$BACKUP_DIR" ]; then
-    echo -e "${RED}Usage: ./rollback.sh <environment> <backup_directory>${NC}"
-    echo "Example: ./rollback.sh staging backups/staging_20240101_120000"
+    echo -e "${RED}Usage: ./rollback.sh <environment> <backup_directory> [-y]${NC}"
+    echo "Example: ./rollback.sh staging backups/staging_20240101_120000 -y"
     exit 1
 fi
 
@@ -25,11 +26,15 @@ echo -e "${YELLOW}⚠️  WARNING: This will rollback to a previous state${NC}"
 echo "Environment: $ENVIRONMENT"
 echo "Backup: $BACKUP_DIR"
 echo ""
-read -p "Are you sure you want to proceed? (yes/no): " confirm
 
-if [ "$confirm" != "yes" ]; then
-    echo "Rollback cancelled"
-    exit 0
+if [ "$FORCE" != "-y" ]; then
+    read -p "Are you sure you want to proceed? (yes/no): " confirm
+    if [ "$confirm" != "yes" ]; then
+        echo "Rollback cancelled"
+        exit 0
+    fi
+else
+    echo "Force flag detected. Skipping confirmation."
 fi
 
 echo -e "${GREEN}🔄 Starting rollback...${NC}"

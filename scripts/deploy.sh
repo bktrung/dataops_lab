@@ -28,11 +28,11 @@ export DBT_PROFILES_DIR=$(pwd)
 
 # Install dependencies
 echo "Installing DBT dependencies..."
-dbt deps --target $TARGET
+dbt deps --target $TARGET --profiles-dir .
 
 # Compile models
 echo "Compiling DBT models..."
-dbt compile --target $TARGET
+dbt compile --target $TARGET --profiles-dir .
 
 if [ $? -ne 0 ]; then
     echo -e "${RED}❌ Compilation failed${NC}"
@@ -41,7 +41,7 @@ fi
 
 # 2. Run tests on current state
 echo -e "${YELLOW}🧪 Running tests...${NC}"
-dbt test --target $TARGET
+dbt test --target $TARGET --profiles-dir .
 
 if [ $? -ne 0 ]; then
     echo -e "${RED}❌ Tests failed${NC}"
@@ -63,7 +63,7 @@ fi
 
 # 4. Deploy models
 echo -e "${YELLOW}🔨 Deploying models...${NC}"
-dbt run --target $TARGET
+dbt run --target $TARGET --profiles-dir .
 
 if [ $? -ne 0 ]; then
     echo -e "${RED}❌ Deployment failed${NC}"
@@ -72,7 +72,7 @@ fi
 
 # 5. Run post-deployment tests
 echo -e "${YELLOW}✅ Running post-deployment tests...${NC}"
-dbt test --target $TARGET
+dbt test --target $TARGET --profiles-dir .
 
 if [ $? -ne 0 ]; then
     echo -e "${RED}❌ Post-deployment tests failed${NC}"
@@ -81,7 +81,7 @@ fi
 
 # 6. Generate documentation
 echo -e "${YELLOW}📚 Generating documentation...${NC}"
-dbt docs generate --target $TARGET
+dbt docs generate --target $TARGET --profiles-dir .
 
 # 7. Success message
 echo -e "${GREEN}✨ Deployment to $ENVIRONMENT completed successfully!${NC}"
