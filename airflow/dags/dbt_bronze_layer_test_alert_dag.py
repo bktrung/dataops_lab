@@ -68,14 +68,14 @@ log_start = PythonOperator(
 # Run bronze models only
 dbt_run_bronze = BashOperator(
     task_id="dbt_run_bronze",
-    bash_command="docker exec dbt_airflow_project-dbt-1 dbt run --select bronze",
+    bash_command="docker exec dbt dbt run --select bronze",
     dag=dag,
 )
 
 # Test bronze models
 dbt_test_bronze = BashOperator(
     task_id="dbt_test_bronze",
-    bash_command="docker exec dbt_airflow_project-dbt-1 dbt test --select bronze",
+    bash_command="docker exec dbt dbt test --select bronze",
     dag=dag,
 )
 
@@ -95,5 +95,5 @@ test_failure = PythonOperator(
 
 # Set task dependencies
 # Test failure runs independently so it doesn't block the pipeline
-log_start >> [test_failure, dbt_run_bronze]
+log_start >> [dbt_run_bronze]
 dbt_run_bronze >> dbt_test_bronze >> log_complete

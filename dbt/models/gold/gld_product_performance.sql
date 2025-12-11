@@ -23,11 +23,12 @@ product_sales as (
         count(distinct s.sales_order_id) as total_orders,
         sum(s.order_qty) as total_quantity_sold,
         sum(s.line_total) as total_revenue,
+        sum(s.line_net) as net_revenue,
         avg(s.unit_price) as avg_selling_price,
-        sum(s.line_total) - (sum(s.order_qty) * p.standard_cost) as total_profit,
+        sum(s.line_net) - (sum(s.order_qty) * p.standard_cost) as total_profit,
         case 
             when sum(s.order_qty) > 0 then 
-                (sum(s.line_total) - (sum(s.order_qty) * p.standard_cost)) / sum(s.line_total) * 100
+                (sum(s.line_net) - (sum(s.order_qty) * p.standard_cost)) / nullif(sum(s.line_net),0) * 100
             else 0
         end as profit_margin_pct
     from products p
