@@ -23,6 +23,9 @@ echo -e "${GREEN}🚀 Starting deployment to $ENVIRONMENT environment...${NC}"
 echo -e "${YELLOW}📋 Running pre-deployment checks...${NC}"
 cd dbt
 
+# Configure dbt to look for profiles.yml in the current directory
+export DBT_PROFILES_DIR=$(pwd)
+
 # Install dependencies
 echo "Installing DBT dependencies..."
 dbt deps --target $TARGET
@@ -53,6 +56,10 @@ mkdir -p $backup_dir
 cp -r target/ $backup_dir/
 
 echo "Backup created at: $backup_dir"
+# Export backup dir for GitHub Actions
+if [ -n "$GITHUB_ENV" ]; then
+    echo "BACKUP_DIR=$backup_dir" >> $GITHUB_ENV
+fi
 
 # 4. Deploy models
 echo -e "${YELLOW}🔨 Deploying models...${NC}"
