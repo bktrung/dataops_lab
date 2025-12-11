@@ -99,8 +99,25 @@ jobs:
             --user ${{ secrets.PROD_SQL_USER }} \
             --password ${{ secrets.PROD_SQL_PASSWORD }}
 
-      - name: Notify team
-        if: always()
+      - name: Rollback on failure
+        if: failure() && env.BACKUP_DIR != ''
+        env:
+          PROD_SQL_SERVER: ${{ secrets.PROD_SQL_SERVER }}
+          PROD_SQL_USER: ${{ secrets.PROD_SQL_USER }}
+          PROD_SQL_PASSWORD: ${{ secrets.PROD_SQL_PASSWORD }}
         run: |
-          echo "Deployment to production completed"
-          # Add Slack notification here
+          echo "Deployment failed. Initiating rollback..."
+          chmod +x scripts/rollback.sh
+          ./scripts/rollback.sh production ${{ env.BACKUP_DIR }} -y
+
+      - name: Notify team (Success)
+        if: success()
+        run: |
+          echo "::notice::✅ Deployment to production completed successfully!"
+          # curl -X POST -H 'Content-type: application/json' --data '{"text":"✅ Prod Deployment Success"}' ${{ secrets.SLACK_WEBHOOK_URL }}
+
+      - name: Notify team (Failure)
+        if: failure()
+        run: |
+          echo "::error::❌ Deployment to production failed!"
+          # curl -X POST -H 'Content-type: application/json' --data '{"text":"❌ Prod Deployment Failed"}' ${{ secrets.SLACK_WEBHOOK_URL }}
