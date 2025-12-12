@@ -21,9 +21,17 @@ staged as (
         c.StoreID,
         c.TerritoryID,
         c.ModifiedDate as last_modified_date
-    from source c
-    left join person p
+    from source as c
+    left join person as p
         on c.PersonID = p.BusinessEntityID
 )
 
-select * from staged 
+select
+    CustomerID,
+    FirstName,
+    LastName,
+    EmailPromotion,
+    StoreID,
+    TerritoryID,
+    last_modified_date
+from staged

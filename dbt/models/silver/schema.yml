@@ -40,10 +40,49 @@ models:
         description: Order detail identifier
         tests:
           - not_null
+          - unique
       - name: line_total
         description: Total amount for line item
         tests:
           - not_null
+      - name: order_channel
+        description: Online/Offline order channel
+      - name: customer_id
+        description: Customer identifier
+        tests:
+          - not_null
+          - relationships:
+              to: ref('slvr_customers')
+              field: customer_id
+      - name: product_id
+        description: Product identifier
+        tests:
+          - not_null
+          - relationships:
+              to: ref('slvr_products')
+              field: product_id
+      - name: territory_id
+        description: Territory identifier on order
+        tests:
+          - relationships:
+              to: ref('brnz_territory')
+              field: territory_id
+      - name: line_net
+        description: Net line amount after discount
+        tests:
+          - positive_values
+      - name: tax_amount
+        description: Header tax amount
+        tests:
+          - positive_values
+      - name: freight_amount
+        description: Header freight amount
+        tests:
+          - positive_values
+      - name: total_due_amount
+        description: Header total due
+        tests:
+          - positive_values
     tests:
       - dbt_utils.unique_combination_of_columns:
           combination_of_columns:

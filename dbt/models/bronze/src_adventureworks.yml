@@ -4,26 +4,62 @@ sources:
   - name: adventureworks
     database: AdventureWorks2014
     schema: Sales
+    freshness:
+      warn_after: {count: 12, period: hour}
+      error_after: {count: 24, period: hour}
+    loaded_at_field: ModifiedDate
     tables:
       - name: SalesOrderHeader
         description: Contains the sales order header information
+        columns:
+          - name: SalesOrderID
+            description: Primary key
+            tests:
+              - unique
+              - not_null
+          - name: CustomerID
+            description: Customer foreign key
+            tests:
+              - not_null
       - name: SalesOrderDetail
         description: Contains the sales order detail line items
       - name: Customer
         description: Contains customer information
+        columns:
+          - name: CustomerID
+            description: Primary key
+            tests:
+              - unique
+              - not_null
+      - name: SalesTerritory
+        description: Sales territories and groupings
+      - name: SalesPerson
+        description: Sales person assignments
+      - name: Store
+        description: Store information for non-individual customers
 
   - name: adventureworks_production
     database: AdventureWorks2014
     schema: Production
+    freshness:
+      warn_after: {count: 12, period: hour}
+      error_after: {count: 24, period: hour}
+    loaded_at_field: ModifiedDate
     tables:
       - name: Product
         description: Contains product information
       - name: ProductSubcategory
         description: Contains product subcategory information
+      - name: ProductCategory
+        description: Contains product category information
 
   - name: adventureworks_person
     database: AdventureWorks2014
     schema: Person
+    freshness:
+      warn_after: {count: 12, period: hour}
+      error_after: {count: 24, period: hour}
+    loaded_at_field: ModifiedDate
     tables:
       - name: Person
-        description: Contains person information 
+        description: Contains person information

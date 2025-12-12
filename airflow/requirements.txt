@@ -4,3 +4,4 @@ apache-airflow-providers-ssh==3.7.1
 python-dotenv==1.0.0
 psycopg2-binary==2.9.9
 pyodbc==4.0.39 
+great_expectations==0.18.8

@@ -36,6 +36,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    user: "50000:984"
     environment:
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
@@ -59,11 +60,13 @@ services:
       dockerfile: Dockerfile
     depends_on:
       - airflow-webserver
+    user: "50000:984"
     environment:
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
       - AIRFLOW__CORE__LOAD_EXAMPLES=False
       - AIRFLOW__CORE__FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLbfzqDDho=
+      - SLACK_WEBHOOK_URL=${SLACK_WEBHOOK_URL}
     volumes:
       - ./airflow/dags:/opt/airflow/dags
       - ./airflow/logs:/opt/airflow/logs
@@ -78,8 +81,11 @@ services:
     build:
       context: ./dbt
       dockerfile: Dockerfile
+    container_name: dbt
     depends_on:
       - sqlserver
+    environment:
+      - DBT_PROFILES_DIR=/usr/app/dbt
     volumes:
       - ./dbt:/usr/app/dbt
     command: tail -f /dev/null  # Keep container running
@@ -92,4 +98,4 @@ volumes:
 
 networks:
   dbt_airflow_network:
-    driver: bridge 
+    driver: bridge

@@ -1,0 +1,352 @@
+name: Deploy to Environments
+
+on:
+  push:
+    branches:
+      - develop
+      - main
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+
+jobs:
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-22.04
+    if: github.ref == 'refs/heads/develop' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')
+    environment: staging
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install ODBC Driver 17
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends curl ca-certificates gnupg unixodbc unixodbc-dev
+          curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | sudo gpg --dearmor --batch --yes -o /usr/share/keyrings/microsoft-prod.gpg
+          echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft-prod.gpg] https://packages.microsoft.com/ubuntu/22.04/prod jammy main" | sudo tee /etc/apt/sources.list.d/microsoft-prod.list
+          sudo apt-get update
+          sudo ACCEPT_EULA=Y DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends msodbcsql17
+
+      - name: Install dependencies
+        run: |
+          pip install dbt-sqlserver pyodbc
+
+      - name: Precheck staging DB connectivity
+        id: precheck_staging
+        shell: bash
+        env:
+          STAGING_SQL_SERVER: ${{ secrets.STAGING_SQL_SERVER }}
+          STAGING_SQL_PORT: ${{ secrets.STAGING_SQL_PORT != '' && secrets.STAGING_SQL_PORT || '1433' }}
+          STAGING_SQL_USER: ${{ secrets.STAGING_SQL_USER }}
+          STAGING_SQL_PASSWORD: ${{ secrets.STAGING_SQL_PASSWORD }}
+        run: |
+          if [[ -z "${STAGING_SQL_SERVER}" || -z "${STAGING_SQL_USER}" || -z "${STAGING_SQL_PASSWORD}" ]]; then
+            echo "::warning::Missing required secrets: STAGING_SQL_SERVER, STAGING_SQL_USER, STAGING_SQL_PASSWORD"
+            echo "can_deploy=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          STAGING_SQL_PORT="${STAGING_SQL_PORT:-1433}"
+
+          if [[ "${STAGING_SQL_SERVER}" == *","* || "${STAGING_SQL_SERVER}" == *";"* ]]; then
+            echo "::warning::STAGING_SQL_SERVER must be hostname only (no port/options)."
+            echo "::warning::Set STAGING_SQL_SERVER=0.tcp.ap.ngrok.io and STAGING_SQL_PORT=17476 (example)."
+            echo "can_deploy=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if ! [[ "${STAGING_SQL_PORT}" =~ ^[0-9]+$ ]] || (( STAGING_SQL_PORT < 1 || STAGING_SQL_PORT > 65535 )); then
+            echo "::warning::Invalid STAGING_SQL_PORT: ${STAGING_SQL_PORT}"
+            echo "can_deploy=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Resolving STAGING_SQL_SERVER..."
+          getent hosts "${STAGING_SQL_SERVER}" || true
+
+          echo "Checking TCP connectivity to ${STAGING_SQL_SERVER}:${STAGING_SQL_PORT} ..."
+          if ! timeout 5 bash -lc "cat < /dev/null > /dev/tcp/${STAGING_SQL_SERVER}/${STAGING_SQL_PORT}"; then
+            echo "::warning::Cannot reach ${STAGING_SQL_SERVER}:${STAGING_SQL_PORT} from this GitHub runner."
+            echo "::warning::If your staging SQL Server is private (VPN/VPC/on-prem), use a self-hosted runner in that network."
+            echo "can_deploy=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Testing SQL login (quick timeout)..."
+            if ! timeout 10 python3 -c 'import os, pyodbc; server=os.environ["STAGING_SQL_SERVER"]; port=os.environ.get("STAGING_SQL_PORT","1433"); user=os.environ["STAGING_SQL_USER"]; password=os.environ["STAGING_SQL_PASSWORD"]; conn_str=("DRIVER={ODBC Driver 17 for SQL Server};SERVER=%s,%s;DATABASE=AdventureWorks2014;UID=%s;PWD=%s;TrustServerCertificate=yes;Connection Timeout=5;" % (server,port,user,password)); conn=pyodbc.connect(conn_str); cur=conn.cursor(); cur.execute("SELECT 1"); cur.fetchone(); conn.close(); print("Login OK")';
+          then
+            echo "::warning::SQL login test failed. Skipping staging deployment."
+            echo "can_deploy=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "can_deploy=true" >> "$GITHUB_OUTPUT"
+
+      - name: Skip staging deployment (DB not reachable)
+        if: steps.precheck_staging.outputs.can_deploy != 'true'
+        run: |
+          echo "::notice::Skipping staging deployment because DB is not reachable or secrets are missing."
+
+      - name: Create dbt profiles.yml (staging)
+        if: steps.precheck_staging.outputs.can_deploy == 'true'
+        shell: bash
+        env:
+          STAGING_SQL_SERVER: ${{ secrets.STAGING_SQL_SERVER }}
+          STAGING_SQL_PORT: ${{ secrets.STAGING_SQL_PORT != '' && secrets.STAGING_SQL_PORT || '1433' }}
+          STAGING_SQL_USER: ${{ secrets.STAGING_SQL_USER }}
+          STAGING_SQL_PASSWORD: ${{ secrets.STAGING_SQL_PASSWORD }}
+        run: |
+          cat > dbt/profiles.yml <<YAML
+          adventureworks:
+            target: staging
+            outputs:
+              staging:
+                type: sqlserver
+                driver: "ODBC Driver 17 for SQL Server"
+                server: "${STAGING_SQL_SERVER}"
+                port: ${STAGING_SQL_PORT}
+                database: "AdventureWorks2014"
+                schema: "dbo"
+                user: "${STAGING_SQL_USER}"
+                password: "${STAGING_SQL_PASSWORD}"
+                encrypt: false
+                trust_cert: true
+                threads: 4
+          YAML
+
+      - name: Run deployment
+        if: steps.precheck_staging.outputs.can_deploy == 'true'
+        env:
+          STAGING_SQL_SERVER: ${{ secrets.STAGING_SQL_SERVER }}
+          STAGING_SQL_PORT: ${{ secrets.STAGING_SQL_PORT != '' && secrets.STAGING_SQL_PORT || '1433' }}
+          STAGING_SQL_USER: ${{ secrets.STAGING_SQL_USER }}
+          STAGING_SQL_PASSWORD: ${{ secrets.STAGING_SQL_PASSWORD }}
+        run: |
+          chmod +x scripts/deploy.sh
+          ./scripts/deploy.sh staging staging
+
+      - name: Run smoke tests
+        if: steps.precheck_staging.outputs.can_deploy == 'true'
+        env:
+          STAGING_SQL_SERVER: ${{ secrets.STAGING_SQL_SERVER }}
+          STAGING_SQL_PORT: ${{ secrets.STAGING_SQL_PORT != '' && secrets.STAGING_SQL_PORT || '1433' }}
+        run: |
+          pip install pyodbc
+          python scripts/smoke_tests.py \
+            --server "${STAGING_SQL_SERVER},${STAGING_SQL_PORT:-1433}" \
+            --database AdventureWorks2014 \
+            --user ${{ secrets.STAGING_SQL_USER }} \
+            --password ${{ secrets.STAGING_SQL_PASSWORD }}
+
+      - name: Upload artifacts
+        if: steps.precheck_staging.outputs.can_deploy == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-deployment
+          path: |
+            dbt/target/
+            backups/
+
+      - name: Notify team (Success)
+        if: success() && steps.precheck_staging.outputs.can_deploy == 'true'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          echo "::notice:: Deployment to staging completed successfully"
+          if [ -n "$SLACK_WEBHOOK_URL" ]; then
+            curl -X POST -H 'Content-type: application/json' --data '{"text":"Staging deployment success"}' "$SLACK_WEBHOOK_URL"
+          else
+            echo "SLACK_WEBHOOK_URL is not set; skipping Slack notification"
+          fi
+
+      - name: Notify team (Failure)
+        if: failure() && steps.precheck_staging.outputs.can_deploy == 'true'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          echo "::error:: Deployment to staging failed"
+          if [ -n "$SLACK_WEBHOOK_URL" ]; then
+            curl -X POST -H 'Content-type: application/json' --data '{"text":"Staging deployment failed"}' "$SLACK_WEBHOOK_URL"
+          else
+            echo "SLACK_WEBHOOK_URL is not set; skipping Slack notification"
+          fi
+
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-22.04
+    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production')
+    environment: production
+    needs: []
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install ODBC Driver 17
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends curl ca-certificates gnupg unixodbc unixodbc-dev
+          curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | sudo gpg --dearmor --batch --yes -o /usr/share/keyrings/microsoft-prod.gpg
+          echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft-prod.gpg] https://packages.microsoft.com/ubuntu/22.04/prod jammy main" | sudo tee /etc/apt/sources.list.d/microsoft-prod.list
+          sudo apt-get update
+          sudo ACCEPT_EULA=Y DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends msodbcsql17
+
+      - name: Install dependencies
+        run: |
+          pip install dbt-sqlserver pyodbc
+
+      - name: Precheck production DB connectivity
+        id: precheck_prod
+        shell: bash
+        env:
+          PROD_SQL_SERVER: ${{ secrets.PROD_SQL_SERVER }}
+          PROD_SQL_PORT: ${{ secrets.PROD_SQL_PORT != '' && secrets.PROD_SQL_PORT || '1433' }}
+          PROD_SQL_USER: ${{ secrets.PROD_SQL_USER }}
+          PROD_SQL_PASSWORD: ${{ secrets.PROD_SQL_PASSWORD }}
+        run: |
+          if [[ -z "${PROD_SQL_SERVER}" || -z "${PROD_SQL_USER}" || -z "${PROD_SQL_PASSWORD}" ]]; then
+            echo "::warning::Missing required secrets: PROD_SQL_SERVER, PROD_SQL_USER, PROD_SQL_PASSWORD"
+            echo "can_deploy=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          PROD_SQL_PORT="${PROD_SQL_PORT:-1433}"
+
+          if [[ "${PROD_SQL_SERVER}" == *","* || "${PROD_SQL_SERVER}" == *";"* ]]; then
+            echo "::warning::PROD_SQL_SERVER must be hostname only (no port/options)."
+            echo "::warning::Set PROD_SQL_SERVER=<hostname> and PROD_SQL_PORT=<port> instead."
+            echo "can_deploy=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if ! [[ "${PROD_SQL_PORT}" =~ ^[0-9]+$ ]] || (( PROD_SQL_PORT < 1 || PROD_SQL_PORT > 65535 )); then
+            echo "::warning::Invalid PROD_SQL_PORT: ${PROD_SQL_PORT}"
+            echo "can_deploy=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Resolving PROD_SQL_SERVER..."
+          getent hosts "${PROD_SQL_SERVER}" || true
+
+          echo "Checking TCP connectivity to ${PROD_SQL_SERVER}:${PROD_SQL_PORT} ..."
+          if ! timeout 5 bash -lc "cat < /dev/null > /dev/tcp/${PROD_SQL_SERVER}/${PROD_SQL_PORT}"; then
+            echo "::warning::Cannot reach ${PROD_SQL_SERVER}:${PROD_SQL_PORT} from this GitHub runner."
+            echo "::warning::If your production SQL Server is private, use a self-hosted runner in that network."
+            echo "can_deploy=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Testing SQL login (quick timeout)..."
+            if ! timeout 10 python3 -c 'import os, pyodbc; server=os.environ["PROD_SQL_SERVER"]; port=os.environ.get("PROD_SQL_PORT","1433"); user=os.environ["PROD_SQL_USER"]; password=os.environ["PROD_SQL_PASSWORD"]; conn_str=("DRIVER={ODBC Driver 17 for SQL Server};SERVER=%s,%s;DATABASE=AdventureWorks2014_Prod;UID=%s;PWD=%s;TrustServerCertificate=yes;Connection Timeout=5;" % (server,port,user,password)); conn=pyodbc.connect(conn_str); cur=conn.cursor(); cur.execute("SELECT 1"); cur.fetchone(); conn.close(); print("Login OK")';
+          then
+            echo "::warning::SQL login test failed. Skipping production deployment."
+            echo "can_deploy=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "can_deploy=true" >> "$GITHUB_OUTPUT"
+
+      - name: Skip production deployment (DB not reachable)
+        if: steps.precheck_prod.outputs.can_deploy != 'true'
+        run: |
+          echo "::notice::Skipping production deployment because DB is not reachable or secrets are missing."
+
+      - name: Create dbt profiles.yml (production)
+        if: steps.precheck_prod.outputs.can_deploy == 'true'
+        shell: bash
+        env:
+          PROD_SQL_SERVER: ${{ secrets.PROD_SQL_SERVER }}
+          PROD_SQL_PORT: ${{ secrets.PROD_SQL_PORT != '' && secrets.PROD_SQL_PORT || '1433' }}
+          PROD_SQL_USER: ${{ secrets.PROD_SQL_USER }}
+          PROD_SQL_PASSWORD: ${{ secrets.PROD_SQL_PASSWORD }}
+        run: |
+          cat > dbt/profiles.yml <<YAML
+          adventureworks:
+            target: prod
+            outputs:
+              prod:
+                type: sqlserver
+                driver: "ODBC Driver 17 for SQL Server"
+                server: "${PROD_SQL_SERVER}"
+                port: ${PROD_SQL_PORT}
+                database: "AdventureWorks2014_Prod"
+                schema: "dbo"
+                user: "${PROD_SQL_USER}"
+                password: "${PROD_SQL_PASSWORD}"
+                encrypt: false
+                trust_cert: true
+                threads: 4
+          YAML
+
+      - name: Run deployment
+        if: steps.precheck_prod.outputs.can_deploy == 'true'
+        env:
+          PROD_SQL_SERVER: ${{ secrets.PROD_SQL_SERVER }}
+          PROD_SQL_PORT: ${{ secrets.PROD_SQL_PORT != '' && secrets.PROD_SQL_PORT || '1433' }}
+          PROD_SQL_USER: ${{ secrets.PROD_SQL_USER }}
+          PROD_SQL_PASSWORD: ${{ secrets.PROD_SQL_PASSWORD }}
+        run: |
+          chmod +x scripts/deploy.sh
+          ./scripts/deploy.sh production prod
+
+      - name: Run smoke tests
+        if: steps.precheck_prod.outputs.can_deploy == 'true'
+        env:
+          PROD_SQL_SERVER: ${{ secrets.PROD_SQL_SERVER }}
+          PROD_SQL_PORT: ${{ secrets.PROD_SQL_PORT != '' && secrets.PROD_SQL_PORT || '1433' }}
+        run: |
+          pip install pyodbc
+          python scripts/smoke_tests.py \
+            --server "${PROD_SQL_SERVER},${PROD_SQL_PORT:-1433}" \
+            --database AdventureWorks2014_Prod \
+            --user ${{ secrets.PROD_SQL_USER }} \
+            --password ${{ secrets.PROD_SQL_PASSWORD }}
+
+      - name: Rollback on failure
+        if: failure() && env.BACKUP_DIR != '' && steps.precheck_prod.outputs.can_deploy == 'true'
+        run: |
+          echo "Deployment failed. Initiating rollback using backup: $BACKUP_DIR"
+          chmod +x scripts/rollback.sh
+          ./scripts/rollback.sh prod "$BACKUP_DIR" -y
+
+      - name: Notify team (Success)
+        if: success() && steps.precheck_prod.outputs.can_deploy == 'true'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          echo "::notice:: Deployment to production completed successfully!"
+          if [ -n "$SLACK_WEBHOOK_URL" ]; then
+            curl -X POST -H 'Content-type: application/json' --data '{"text":"Production deployment success"}' "$SLACK_WEBHOOK_URL"
+          else
+            echo "SLACK_WEBHOOK_URL is not set; skipping Slack notification"
+          fi
+
+      - name: Notify team (Failure)
+        if: failure() && steps.precheck_prod.outputs.can_deploy == 'true'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          echo "::error:: Deployment to production failed!"
+          if [ -n "$SLACK_WEBHOOK_URL" ]; then
+            curl -X POST -H 'Content-type: application/json' --data '{"text":"Production deployment failed"}' "$SLACK_WEBHOOK_URL"
+          else
+            echo "SLACK_WEBHOOK_URL is not set; skipping Slack notification"
+          fi
