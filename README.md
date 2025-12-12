@@ -18,11 +18,11 @@ This project implements an automated data transformation pipeline using DBT (Dat
 ### Architecture Overview
 ```
 ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│  SQL Server │ ──► │    DBT     │ ──► │  Target DB  │
+│  SQL Server │ ──► │    DBT      │ ──► │  Target DB  │
 └─────────────┘     └─────────────┘     └─────────────┘
-        ▲                  ▲                   ▲
+        ▲                 ▲                   ▲
         └──────────┬──────┴───────────┬───────┘
-                   │                   │
+                   │                  │
             ┌──────┴───────┐    ┌─────┴──────┐
             │   Airflow    │    │  Docker    │
             └──────────────┘    └────────────┘
