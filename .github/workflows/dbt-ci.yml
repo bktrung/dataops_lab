@@ -220,7 +220,7 @@ jobs:
                 driver: "ODBC Driver 17 for SQL Server"
                 server: "${STAGING_SQL_SERVER}"
                 port: 1433
-                database: "AdventureWorks2014_Staging"
+                database: "AdventureWorks2014"
                 schema: "dbo"
                 user: "${STAGING_SQL_USER}"
                 password: "${STAGING_SQL_PASSWORD}"
