@@ -11,10 +11,15 @@ with source_data as (
 transformed as (
     select
         CustomerID as id,
-        AccountNumber as name,
+        AccountNumber as account_number,
         ModifiedDate as created_at,
         ModifiedDate as updated_at
     from source_data
 )
 
-select * from transformed 
+select
+    id,
+    account_number,
+    created_at,
+    updated_at
+from transformed

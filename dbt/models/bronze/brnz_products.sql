@@ -1,8 +1,8 @@
-with product as (
+with src_product as (
     select * from {{ source('adventureworks_production', 'Product') }}
 ),
 
-product_subcategory as (
+src_product_subcategory as (
     select * from {{ source('adventureworks_production', 'ProductSubcategory') }}
 ),
 
@@ -24,8 +24,8 @@ staged as (
         p.Weight,
         p.DaysToManufacture,
         p.ProductLine,
-        p.Class,
-        p.Style,
+        p.[Class] as product_class,
+        p.Style as product_style,
         p.ProductSubcategoryID,
         p.ProductModelID,
         p.SellStartDate,
@@ -34,9 +34,36 @@ staged as (
         ps.Name as SubcategoryName,
         ps.ProductCategoryID,
         p.ModifiedDate as last_modified_date
-    from product p
-    left join product_subcategory ps
+    from src_product as p
+    left join src_product_subcategory as ps
         on p.ProductSubcategoryID = ps.ProductSubcategoryID
 )
 
-select * from staged 
+select
+    ProductID,
+    ProductName,
+    ProductNumber,
+    MakeFlag,
+    FinishedGoodsFlag,
+    Color,
+    SafetyStockLevel,
+    ReorderPoint,
+    StandardCost,
+    ListPrice,
+    Size,
+    SizeUnitMeasureCode,
+    WeightUnitMeasureCode,
+    Weight,
+    DaysToManufacture,
+    ProductLine,
+    product_class,
+    product_style,
+    ProductSubcategoryID,
+    ProductModelID,
+    SellStartDate,
+    SellEndDate,
+    DiscontinuedDate,
+    SubcategoryName,
+    ProductCategoryID,
+    last_modified_date
+from staged

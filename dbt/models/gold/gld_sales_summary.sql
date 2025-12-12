@@ -35,4 +35,21 @@ daily_summary as (
         subcategory_id
 )
 
-select * from daily_summary
+select
+    order_date,
+    territory_group,
+    territory_name,
+    category_id,
+    subcategory_id,
+    total_orders,
+    unique_customers,
+    total_items_sold,
+    total_revenue,
+    net_revenue,
+    tax_amount,
+    freight_amount,
+    avg_order_line_value,
+    online_orders,
+    offline_orders,
+    discounted_revenue
+from daily_summary

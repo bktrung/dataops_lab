@@ -4,7 +4,7 @@ with sales_order_header as (
         OrderDate as order_date,
         DueDate as due_date,
         ShipDate as ship_date,
-        Status as status,
+        Status as [status],
         OnlineOrderFlag as online_order_flag,
         SalesOrderNumber as sales_order_number,
         PurchaseOrderNumber as purchase_order_number,
@@ -54,6 +54,6 @@ select
     d.unit_price,
     d.unit_price_discount,
     d.line_total
-from sales_order_header h
-left join sales_order_detail d
-    on h.sales_order_id = d.sales_order_id 
+from sales_order_header as h
+left join sales_order_detail as d
+    on h.sales_order_id = d.sales_order_id
