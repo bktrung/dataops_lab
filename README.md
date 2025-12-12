@@ -304,43 +304,50 @@ docker-compose build
 name: 'dbt_sqlserver_project'
 version: '1.0.0'
 config-version: 2
-profile: 'default'
+
+profile: 'adventureworks'
 
 model-paths: ["models"]
+analysis-paths: ["analyses"]
 test-paths: ["tests"]
+seed-paths: ["seeds"]
 macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
 
 target-path: "target"
 clean-targets:
-    - "target"
-    - "dbt_packages"
-    - "logs"
+  - "target"
+  - "dbt_packages"
 
 models:
   dbt_sqlserver_project:
-    staging:
-      materialized: view
-    intermediate:
-      materialized: table
-    marts:
-      materialized: table
+    bronze:
+      +materialized: view
+      +schema: bronze
+    silver:
+      +materialized: table
+      +schema: silver
+    gold:
+      +materialized: table
+      +schema: gold
 ```
 
 3.2. Configure DBT profiles (`profiles.yml`):
 ```yaml
-default:
+adventureworks:
   target: dev
   outputs:
     dev:
       type: sqlserver
-      driver: 'ODBC Driver 17 for SQL Server'
+      driver: "ODBC Driver 17 for SQL Server"
       server: sqlserver
       port: 1433
-      database: AdventureWorks
+      database: AdventureWorks2014
       schema: dbo
       user: sa
-      password: YourStrong@Passw0rd
+      password: "YourStrong@Passw0rd"
       threads: 4
+      trust_cert: true
 ```
 
 3.3. Install DBT packages (`packages.yml`):
@@ -534,11 +541,54 @@ models:
           - not_null
           - dbt_expectations.expect_column_values_to_be_of_type:
               column_type: int
+      - name: FirstName
+        description: "Customer first name (NULL for store customers)"
+      - name: LastName
+        description: "Customer last name (NULL for store customers)"
       - name: EmailPromotion
         description: "Email promotion preference"
         tests:
           - accepted_values:
               values: [0, 1, 2]
+      - name: StoreID
+        description: "Store identifier"
+      - name: TerritoryID
+        description: "Sales territory"
+      - name: last_modified_date
+        description: "Last modified timestamp"
+        tests:
+          - not_null
+
+  - name: brnz_sales_orders
+    description: "Bronze layer sales order data"
+    columns:
+      - name: sales_order_id
+        description: "Primary key"
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_of_type:
+              column_type: int
+      - name: order_date
+        description: "Order date"
+        tests:
+          - not_null
+          - no_future_dates
+      - name: customer_id
+        description: "Foreign key to customer"
+        tests:
+          - not_null
+          - relationships:
+              to: ref('brnz_customers')
+              field: CustomerID
+      - name: line_total
+        description: "Line total"
+        tests:
+          - positive_values
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - sales_order_id
+            - order_detail_id
 ```
 
 ### 5. Airflow DAG Configuration
