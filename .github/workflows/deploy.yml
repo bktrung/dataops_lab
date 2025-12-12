@@ -103,20 +103,25 @@ jobs:
       - name: Create dbt profiles.yml (staging)
         if: steps.precheck_staging.outputs.can_deploy == 'true'
         shell: bash
+        env:
+          STAGING_SQL_SERVER: ${{ secrets.STAGING_SQL_SERVER }}
+          STAGING_SQL_PORT: ${{ secrets.STAGING_SQL_PORT != '' && secrets.STAGING_SQL_PORT || '1433' }}
+          STAGING_SQL_USER: ${{ secrets.STAGING_SQL_USER }}
+          STAGING_SQL_PASSWORD: ${{ secrets.STAGING_SQL_PASSWORD }}
         run: |
-          cat > dbt/profiles.yml <<'YAML'
+          cat > dbt/profiles.yml <<YAML
           adventureworks:
             target: staging
             outputs:
               staging:
                 type: sqlserver
                 driver: "ODBC Driver 17 for SQL Server"
-                server: "{{ env_var('STAGING_SQL_SERVER') }}"
-                port: {{ env_var('STAGING_SQL_PORT', '1433') | int }}
+                server: "${STAGING_SQL_SERVER}"
+                port: ${STAGING_SQL_PORT}
                 database: "AdventureWorks2014"
                 schema: "dbo"
-                user: "{{ env_var('STAGING_SQL_USER') }}"
-                password: "{{ env_var('STAGING_SQL_PASSWORD') }}"
+                user: "${STAGING_SQL_USER}"
+                password: "${STAGING_SQL_PASSWORD}"
                 encrypt: false
                 trust_cert: true
                 threads: 4
@@ -267,20 +272,25 @@ jobs:
       - name: Create dbt profiles.yml (production)
         if: steps.precheck_prod.outputs.can_deploy == 'true'
         shell: bash
+        env:
+          PROD_SQL_SERVER: ${{ secrets.PROD_SQL_SERVER }}
+          PROD_SQL_PORT: ${{ secrets.PROD_SQL_PORT != '' && secrets.PROD_SQL_PORT || '1433' }}
+          PROD_SQL_USER: ${{ secrets.PROD_SQL_USER }}
+          PROD_SQL_PASSWORD: ${{ secrets.PROD_SQL_PASSWORD }}
         run: |
-          cat > dbt/profiles.yml <<'YAML'
+          cat > dbt/profiles.yml <<YAML
           adventureworks:
             target: prod
             outputs:
               prod:
                 type: sqlserver
                 driver: "ODBC Driver 17 for SQL Server"
-                server: "{{ env_var('PROD_SQL_SERVER') }}"
-                port: {{ env_var('PROD_SQL_PORT', '1433') | int }}
+                server: "${PROD_SQL_SERVER}"
+                port: ${PROD_SQL_PORT}
                 database: "AdventureWorks2014_Prod"
                 schema: "dbo"
-                user: "{{ env_var('PROD_SQL_USER') }}"
-                password: "{{ env_var('PROD_SQL_PASSWORD') }}"
+                user: "${PROD_SQL_USER}"
+                password: "${PROD_SQL_PASSWORD}"
                 encrypt: false
                 trust_cert: true
                 threads: 4
