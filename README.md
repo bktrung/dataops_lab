@@ -275,12 +275,12 @@ dataops_lab/
 1.1. Clone the repository:
 ```bash
 git clone <repository-url>
-cd dbt_airflow_project
+cd dataops_lab
 ```
 
 1.2. Create necessary directories:
 ```bash
-mkdir -p airflow/dags airflow/logs dbt/models/{staging,intermediate,marts}
+mkdir -p airflow/dags airflow/logs airflow/plugins dbt/models/{bronze,silver,gold} dbt/tests/{generic,data_quality}
 ```
 
 ### 2. Docker Configuration
@@ -361,8 +361,18 @@ with sales_order_header as (
     select
         SalesOrderID as sales_order_id,
         OrderDate as order_date,
+        DueDate as due_date,
+        ShipDate as ship_date,
+        Status as status,
+        OnlineOrderFlag as online_order_flag,
         CustomerID as customer_id,
-        -- ... other fields
+        SalesPersonID as sales_person_id,
+        TerritoryID as territory_id,
+        TaxAmt as tax_amount,
+        Freight as freight_amount,
+        SubTotal as subtotal_amount,
+        TotalDue as total_due_amount,
+        ModifiedDate as last_modified_date
     from {{ source('adventureworks', 'SalesOrderHeader') }}
 ),
 sales_order_detail as (
@@ -370,17 +380,33 @@ sales_order_detail as (
         SalesOrderDetailID as order_detail_id,
         SalesOrderID as sales_order_id,
         ProductID as product_id,
-        -- ... other fields
+        OrderQty as order_qty,
+        UnitPrice as unit_price,
+        UnitPriceDiscount as unit_price_discount,
+        LineTotal as line_total
     from {{ source('adventureworks', 'SalesOrderDetail') }}
 )
 
 select
     h.sales_order_id,
     h.order_date,
+    h.due_date,
+    h.ship_date,
+    h.status,
     h.customer_id,
+    h.sales_person_id,
+    h.territory_id,
+    h.tax_amount,
+    h.freight_amount,
+    h.subtotal_amount,
+    h.total_due_amount,
+    h.last_modified_date,
     d.order_detail_id,
     d.product_id,
-    -- ... joined fields
+    d.order_qty,
+    d.unit_price,
+    d.unit_price_discount,
+    d.line_total
 from sales_order_header h
 left join sales_order_detail d
     on h.sales_order_id = d.sales_order_id
@@ -391,6 +417,12 @@ left join sales_order_detail d
 Silver models apply business logic and data cleaning. Example: `slvr_sales_orders.sql`:
 
 ```sql
+{{
+    config(
+        materialized='table'
+    )
+}}
+
 with bronze_sales as (
     select * from {{ ref('brnz_sales_orders') }}
 ),
@@ -399,25 +431,48 @@ products as (
 ),
 customers as (
     select * from {{ ref('slvr_customers') }}
+),
+territory as (
+    select * from {{ ref('brnz_territory') }}
+),
+
+cleaned as (
+    select
+        sales_order_id,
+        order_detail_id,
+        order_date,
+        -- Calculated fields
+        unit_price * order_qty as gross_amount,
+        line_total / nullif(order_qty, 0) as effective_unit_price,
+        case 
+            when unit_price_discount > 0 then 1
+            else 0
+        end as has_discount,
+        (unit_price * order_qty) * (1 - coalesce(unit_price_discount, 0)) as line_net,
+        case 
+            when online_order_flag = 1 then 'Online'
+            else 'Offline'
+        end as order_channel,
+        -- ... other fields
+    from bronze_sales
+    where order_qty > 0
+        and unit_price >= 0
 )
 
 select
-    sales_order_id,
-    order_date,
-    -- Calculated fields
-    unit_price * order_qty as gross_amount,
-    line_total / nullif(order_qty, 0) as effective_unit_price,
-    case 
-        when unit_price_discount > 0 then 1
-        else 0
-    end as has_discount,
-    -- Joined data
+    c.*,
     p.product_name,
-    cust.full_name as customer_name
-from bronze_sales
-left join products p on product_id = p.product_id
-left join customers cust on customer_id = cust.customer_id
-where order_qty > 0 and unit_price >= 0
+    p.category_id,
+    p.subcategory_id,
+    p.subcategory_name,
+    p.list_price,
+    cust.full_name as customer_name,
+    t.territory_name,
+    t.territory_group
+from cleaned c
+left join products p on c.product_id = p.product_id
+left join customers cust on c.customer_id = cust.customer_id
+left join territory t on c.territory_id = t.territory_id
 ```
 
 **4.3. Gold Layer Models:**
@@ -425,25 +480,40 @@ where order_qty > 0 and unit_price >= 0
 Gold models create business-ready analytical marts. Example: `gld_customer_metrics.sql`:
 
 ```sql
+{{
+    config(
+        materialized='table'
+    )
+}}
+
 with customers as (
     select * from {{ ref('slvr_customers') }}
 ),
 sales as (
     select * from {{ ref('slvr_sales_orders') }}
+),
+
+customer_sales as (
+    select
+        c.customer_id,
+        c.full_name,
+        c.territory_id,
+        s.territory_group,
+        count(distinct s.sales_order_id) as total_orders,
+        sum(s.line_total) as total_revenue,
+        sum(s.line_net) as net_revenue,
+        sum(s.order_qty) as total_items_purchased,
+        avg(nullif(s.line_total,0)) as avg_order_value,
+        min(s.order_date) as first_order_date,
+        max(s.order_date) as last_order_date,
+        sum(case when s.has_discount = 1 then 1 else 0 end) as orders_with_discount
+    from customers c
+    left join sales s
+        on c.customer_id = s.customer_id
+    group by c.customer_id, c.full_name, c.territory_id, s.territory_group
 )
 
-select
-    c.customer_id,
-    c.full_name,
-    count(distinct s.sales_order_id) as total_orders,
-    sum(s.line_total) as total_revenue,
-    sum(s.line_net) as net_revenue,
-    avg(nullif(s.line_total,0)) as avg_order_value,
-    min(s.order_date) as first_order_date,
-    max(s.order_date) as last_order_date
-from customers c
-left join sales s on c.customer_id = s.customer_id
-group by c.customer_id, c.full_name
+select * from customer_sales
 ```
 
 **4.4. Schema Tests Configuration:**
@@ -541,11 +611,11 @@ with DAG(
 ```
 
 **Key Features:**
-- **Layer-by-layer execution**: Ensures proper data dependencies
-- **Error handling**: Automatic retries with exponential backoff
-- **Alerting**: Failure notifications via AlertManager
-- **Documentation**: Comprehensive DAG documentation
-- **Scheduling**: Daily execution with no catchup
+- **Layer-by-layer execution**: Ensures proper data dependencies (Bronze → Silver → Gold → Test)
+- **Error handling**: Automatic retries (2 attempts with 2-minute delay)
+- **Alerting**: Failure notifications via AlertManager integration
+- **Documentation**: Comprehensive DAG documentation in `doc_md`
+- **Scheduling**: Daily execution (`@daily`) with no catchup
 
 ### 6. Starting the Project
 
@@ -706,12 +776,12 @@ We use containers for several important reasons:
 - ✅ `data_quality_dag`: Data quality validation DAG
 
 **Features:**
-- ✅ Task dependencies properly configured
-- ✅ Error handling and retry logic
-- ✅ Failure notifications (AlertManager integration)
+- ✅ Task dependencies properly configured (Bronze → Silver → Gold → Test)
+- ✅ Error handling with retries (2 attempts, 2-minute delay)
+- ✅ Failure notifications via AlertManager integration
 - ✅ Comprehensive DAG documentation
 - ✅ Scheduling configured (daily and periodic)
-- ✅ Logging utilities for monitoring
+- ✅ Logging utilities for monitoring (DataOpsLogger)
 
 ## Troubleshooting
 
