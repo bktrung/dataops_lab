@@ -44,6 +44,28 @@ jobs:
         run: |
           pip install dbt-sqlserver pyodbc
 
+      - name: Validate staging DB secrets and connectivity
+        shell: bash
+        env:
+          STAGING_SQL_SERVER: ${{ secrets.STAGING_SQL_SERVER }}
+          STAGING_SQL_USER: ${{ secrets.STAGING_SQL_USER }}
+          STAGING_SQL_PASSWORD: ${{ secrets.STAGING_SQL_PASSWORD }}
+        run: |
+          if [[ -z "${STAGING_SQL_SERVER}" || -z "${STAGING_SQL_USER}" || -z "${STAGING_SQL_PASSWORD}" ]]; then
+            echo "::error::Missing required secrets: STAGING_SQL_SERVER, STAGING_SQL_USER, STAGING_SQL_PASSWORD"
+            exit 1
+          fi
+
+          echo "Resolving STAGING_SQL_SERVER..."
+          getent hosts "${STAGING_SQL_SERVER}" || true
+
+          echo "Checking TCP connectivity to ${STAGING_SQL_SERVER}:1433 ..."
+          if ! timeout 5 bash -lc "cat < /dev/null > /dev/tcp/${STAGING_SQL_SERVER}/1433"; then
+            echo "::error::Cannot reach ${STAGING_SQL_SERVER}:1433 from this GitHub runner."
+            echo "::error::If your staging SQL Server is private (VPN/VPC/on-prem), use a self-hosted runner in that network or expose the DB appropriately."
+            exit 1
+          fi
+
       - name: Create dbt profiles.yml (staging)
         shell: bash
         env:
@@ -147,6 +169,28 @@ jobs:
       - name: Install dependencies
         run: |
           pip install dbt-sqlserver pyodbc
+
+      - name: Validate production DB secrets and connectivity
+        shell: bash
+        env:
+          PROD_SQL_SERVER: ${{ secrets.PROD_SQL_SERVER }}
+          PROD_SQL_USER: ${{ secrets.PROD_SQL_USER }}
+          PROD_SQL_PASSWORD: ${{ secrets.PROD_SQL_PASSWORD }}
+        run: |
+          if [[ -z "${PROD_SQL_SERVER}" || -z "${PROD_SQL_USER}" || -z "${PROD_SQL_PASSWORD}" ]]; then
+            echo "::error::Missing required secrets: PROD_SQL_SERVER, PROD_SQL_USER, PROD_SQL_PASSWORD"
+            exit 1
+          fi
+
+          echo "Resolving PROD_SQL_SERVER..."
+          getent hosts "${PROD_SQL_SERVER}" || true
+
+          echo "Checking TCP connectivity to ${PROD_SQL_SERVER}:1433 ..."
+          if ! timeout 5 bash -lc "cat < /dev/null > /dev/tcp/${PROD_SQL_SERVER}/1433"; then
+            echo "::error::Cannot reach ${PROD_SQL_SERVER}:1433 from this GitHub runner."
+            echo "::error::If your production SQL Server is private, use a self-hosted runner in that network or expose the DB appropriately."
+            exit 1
+          fi
 
       - name: Create dbt profiles.yml (production)
         shell: bash
