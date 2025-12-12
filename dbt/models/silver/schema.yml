@@ -40,6 +40,7 @@ models:
         description: Order detail identifier
         tests:
           - not_null
+          - unique
       - name: line_total
         description: Total amount for line item
         tests:
@@ -50,12 +51,22 @@ models:
         description: Customer identifier
         tests:
           - not_null
+          - relationships:
+              to: ref('slvr_customers')
+              field: customer_id
       - name: product_id
         description: Product identifier
         tests:
           - not_null
+          - relationships:
+              to: ref('slvr_products')
+              field: product_id
       - name: territory_id
         description: Territory identifier on order
+        tests:
+          - relationships:
+              to: ref('brnz_territory')
+              field: territory_id
       - name: line_net
         description: Net line amount after discount
         tests:

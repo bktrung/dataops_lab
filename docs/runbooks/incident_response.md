@@ -167,15 +167,21 @@ dbt run --select <model_name>
 
 ### Quick Rollback
 
+Note: In this project, the DBT target names used by CI/CD are `staging` and `prod` (not `production`).
+
 ```bash
 # 1. Identify backup to restore
 ls -la backups/
 
 # 2. Run rollback script
-./scripts/rollback.sh <environment> <backup_directory>
+./scripts/rollback.sh <target> <backup_directory>
+
+# Examples:
+./scripts/rollback.sh staging backups/staging_YYYYMMDD_HHMMSS
+./scripts/rollback.sh prod backups/production_YYYYMMDD_HHMMSS
 
 # 3. Verify rollback
-dbt test --target <environment>
+dbt test --target <target>
 ```
 
 ### Git Rollback

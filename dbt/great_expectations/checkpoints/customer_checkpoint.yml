@@ -10,7 +10,7 @@ validations:
       data_asset_name: Sales.Customer
       runtime_parameters:
         query: |
-          SELECT TOP 1000 *
+          SELECT *
           FROM Sales.Customer
       batch_identifiers:
         default_identifier_name: customer_batch

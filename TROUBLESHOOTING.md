@@ -174,4 +174,89 @@ git clone <project_repo> or copy fresh files
 3. **Contact Support**
 - Check project documentation
 - Review issue tracker
-- Consult with team members 
+- Consult with team members
+
+---
+
+## Error: Docker socket permission denied in Airflow (docker exec)
+
+### Symptoms
+- Airflow task fails when running `docker exec ...`
+- Log includes: `Got permission denied while trying to connect to the Docker daemon socket at unix:///var/run/docker.sock`
+
+### Cause
+The Airflow container can see `/var/run/docker.sock` (it is mounted), but the Airflow process user does not have permission to access the socket.
+
+### Fix (Linux)
+
+1) Get the Docker socket group id on the host:
+
+```bash
+stat -c 'docker.sock gid=%g owner=%U group=%G perms=%A' /var/run/docker.sock
+```
+
+2) Ensure `airflow-webserver` and `airflow-scheduler` run with a group id that matches that GID.
+
+Example (`docker-compose.yml`):
+
+```yaml
+services:
+   airflow-webserver:
+      user: "50000:<DOCKER_SOCK_GID>"
+      volumes:
+         - /var/run/docker.sock:/var/run/docker.sock
+
+   airflow-scheduler:
+      user: "50000:<DOCKER_SOCK_GID>"
+      volumes:
+         - /var/run/docker.sock:/var/run/docker.sock
+```
+
+3) Restart and verify from inside the scheduler container (LocalExecutor runs tasks there):
+
+```bash
+docker-compose down
+docker-compose up -d
+
+docker-compose exec airflow-scheduler bash -lc 'id; ls -l /var/run/docker.sock'
+docker-compose exec airflow-scheduler bash -lc 'docker ps >/dev/null && echo OK || echo FAIL'
+```
+
+If `docker ps` prints `OK`, Airflow tasks that call `docker exec` can access Docker.
+
+---
+
+## Error: Great Expectations docs build PermissionError (cannot create `dbt/gx/*`)
+
+### Symptoms
+- Airflow task `generate_data_docs` fails
+- Log includes: `PermissionError: [Errno 13] Permission denied: '/opt/airflow/dbt/gx/checkpoints'`
+
+### Cause
+`great_expectations docs build` needs to create/update folders under the GE DataContext (commonly `dbt/gx/*`).
+Because `./dbt` is bind-mounted into Airflow at `/opt/airflow/dbt`, the container user must have write permissions on the host folder `dbt/gx`.
+
+### Fix (Linux)
+
+Grant write access to the Airflow containers' group (in this repo the Airflow containers run as `50000:<DOCKER_SOCK_GID>`).
+If your Docker socket group is `docker`, you can reuse that group so both Docker access and GE docs writes work.
+
+```bash
+cd dbt_airflow_project
+
+# Ensure the folder exists
+mkdir -p dbt/gx
+
+# Make it writable by the 'docker' group (or another group that matches your Airflow container GID)
+sudo chgrp -R docker dbt/gx
+sudo chmod -R g+rwX dbt/gx
+
+# Ensure new subfolders inherit the group
+sudo find dbt/gx -type d -exec chmod g+s {} \;
+```
+
+Verify from the Airflow scheduler container:
+
+```bash
+docker-compose exec airflow-scheduler bash -lc "cd /opt/airflow/dbt/great_expectations && echo Y | great_expectations docs build"
+```

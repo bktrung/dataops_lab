@@ -35,6 +35,31 @@ jobs:
         run: |
           pip install dbt-sqlserver pyodbc
 
+      - name: Create dbt profiles.yml (staging)
+        shell: bash
+        env:
+          STAGING_SQL_SERVER: ${{ secrets.STAGING_SQL_SERVER }}
+          STAGING_SQL_USER: ${{ secrets.STAGING_SQL_USER }}
+          STAGING_SQL_PASSWORD: ${{ secrets.STAGING_SQL_PASSWORD }}
+        run: |
+          cat > dbt/profiles.yml <<'YAML'
+          adventureworks:
+            target: staging
+            outputs:
+              staging:
+                type: sqlserver
+                driver: "ODBC Driver 18 for SQL Server"
+                server: "${STAGING_SQL_SERVER}"
+                port: 1433
+                database: "AdventureWorks2014_Staging"
+                schema: "dbo"
+                user: "${STAGING_SQL_USER}"
+                password: "${STAGING_SQL_PASSWORD}"
+                encrypt: false
+                trust_cert: true
+                threads: 4
+          YAML
+
       - name: Run deployment
         env:
           STAGING_SQL_SERVER: ${{ secrets.STAGING_SQL_SERVER }}
@@ -61,6 +86,30 @@ jobs:
             dbt/target/
             backups/
 
+      - name: Notify team (Success)
+        if: success()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          echo "::notice:: Deployment to staging completed successfully"
+          if [ -n "$SLACK_WEBHOOK_URL" ]; then
+            curl -X POST -H 'Content-type: application/json' --data '{"text":"Staging deployment success"}' "$SLACK_WEBHOOK_URL"
+          else
+            echo "SLACK_WEBHOOK_URL is not set; skipping Slack notification"
+          fi
+
+      - name: Notify team (Failure)
+        if: failure()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          echo "::error:: Deployment to staging failed"
+          if [ -n "$SLACK_WEBHOOK_URL" ]; then
+            curl -X POST -H 'Content-type: application/json' --data '{"text":"Staging deployment failed"}' "$SLACK_WEBHOOK_URL"
+          else
+            echo "SLACK_WEBHOOK_URL is not set; skipping Slack notification"
+          fi
+
   deploy-production:
     name: Deploy to Production
     runs-on: ubuntu-latest
@@ -80,6 +129,31 @@ jobs:
       - name: Install dependencies
         run: |
           pip install dbt-sqlserver pyodbc
+
+      - name: Create dbt profiles.yml (production)
+        shell: bash
+        env:
+          PROD_SQL_SERVER: ${{ secrets.PROD_SQL_SERVER }}
+          PROD_SQL_USER: ${{ secrets.PROD_SQL_USER }}
+          PROD_SQL_PASSWORD: ${{ secrets.PROD_SQL_PASSWORD }}
+        run: |
+          cat > dbt/profiles.yml <<'YAML'
+          adventureworks:
+            target: prod
+            outputs:
+              prod:
+                type: sqlserver
+                driver: "ODBC Driver 18 for SQL Server"
+                server: "${PROD_SQL_SERVER}"
+                port: 1433
+                database: "AdventureWorks2014_Prod"
+                schema: "dbo"
+                user: "${PROD_SQL_USER}"
+                password: "${PROD_SQL_PASSWORD}"
+                encrypt: false
+                trust_cert: true
+                threads: 4
+          YAML
 
       - name: Run deployment
         env:
@@ -101,23 +175,31 @@ jobs:
 
       - name: Rollback on failure
         if: failure() && env.BACKUP_DIR != ''
-        env:
-          PROD_SQL_SERVER: ${{ secrets.PROD_SQL_SERVER }}
-          PROD_SQL_USER: ${{ secrets.PROD_SQL_USER }}
-          PROD_SQL_PASSWORD: ${{ secrets.PROD_SQL_PASSWORD }}
         run: |
-          echo "Deployment failed. Initiating rollback..."
+          echo "Deployment failed. Initiating rollback using backup: $BACKUP_DIR"
           chmod +x scripts/rollback.sh
-          ./scripts/rollback.sh production ${{ env.BACKUP_DIR }} -y
+          ./scripts/rollback.sh prod "$BACKUP_DIR" -y
 
       - name: Notify team (Success)
         if: success()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
-          echo "::notice::✅ Deployment to production completed successfully!"
-          # curl -X POST -H 'Content-type: application/json' --data '{"text":"✅ Prod Deployment Success"}' ${{ secrets.SLACK_WEBHOOK_URL }}
+          echo "::notice:: Deployment to production completed successfully!"
+          if [ -n "$SLACK_WEBHOOK_URL" ]; then
+            curl -X POST -H 'Content-type: application/json' --data '{"text":"Production deployment success"}' "$SLACK_WEBHOOK_URL"
+          else
+            echo "SLACK_WEBHOOK_URL is not set; skipping Slack notification"
+          fi
 
       - name: Notify team (Failure)
         if: failure()
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
-          echo "::error::❌ Deployment to production failed!"
-          # curl -X POST -H 'Content-type: application/json' --data '{"text":"❌ Prod Deployment Failed"}' ${{ secrets.SLACK_WEBHOOK_URL }}
+          echo "::error:: Deployment to production failed!"
+          if [ -n "$SLACK_WEBHOOK_URL" ]; then
+            curl -X POST -H 'Content-type: application/json' --data '{"text":"Production deployment failed"}' "$SLACK_WEBHOOK_URL"
+          else
+            echo "SLACK_WEBHOOK_URL is not set; skipping Slack notification"
+          fi

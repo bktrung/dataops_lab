@@ -10,7 +10,7 @@ validations:
       data_asset_name: Sales.SalesOrderHeader
       runtime_parameters:
         query: |
-          SELECT TOP 1000 *
+          SELECT *
           FROM Sales.SalesOrderHeader
       batch_identifiers:
         default_identifier_name: sales_order_batch

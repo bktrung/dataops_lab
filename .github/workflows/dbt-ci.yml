@@ -30,8 +30,7 @@ jobs:
       - name: Lint SQL files
         run: |
           cd dbt
-          sqlfluff lint models/ --dialect tsql || true
-        continue-on-error: true
+          sqlfluff lint models/ --dialect tsql
 
   lint-python:
     name: Lint Python Files
@@ -51,8 +50,7 @@ jobs:
 
       - name: Lint Python files
         run: |
-          flake8 airflow/dags/ --max-line-length=120 --count --statistics || true
-        continue-on-error: true
+          flake8 airflow/dags/ --max-line-length=120 --count --statistics
 
   dbt-compile:
     name: Compile DBT Models
@@ -72,6 +70,27 @@ jobs:
         run: |
           pip install dbt-sqlserver
 
+      - name: Create dbt profiles.yml (CI)
+        shell: bash
+        run: |
+          cat > dbt/profiles.yml <<'YAML'
+          adventureworks:
+            target: ci
+            outputs:
+              ci:
+                type: sqlserver
+                driver: "ODBC Driver 18 for SQL Server"
+                server: "localhost"
+                port: 1433
+                database: "AdventureWorks2014"
+                schema: "dbo"
+                user: "sa"
+                password: "not_used_for_compile"
+                encrypt: false
+                trust_cert: true
+                threads: 2
+          YAML
+
       - name: Install DBT dependencies
         run: |
           cd dbt
@@ -80,8 +99,7 @@ jobs:
       - name: Compile DBT models
         run: |
           cd dbt
-          dbt compile --profiles-dir . || true
-        continue-on-error: true
+          dbt compile --profiles-dir .
 
       - name: Upload compiled artifacts
         uses: actions/upload-artifact@v4
@@ -108,6 +126,27 @@ jobs:
       - name: Install DBT
         run: pip install dbt-sqlserver
 
+      - name: Create dbt profiles.yml (CI)
+        shell: bash
+        run: |
+          cat > dbt/profiles.yml <<'YAML'
+          adventureworks:
+            target: ci
+            outputs:
+              ci:
+                type: sqlserver
+                driver: "ODBC Driver 18 for SQL Server"
+                server: "localhost"
+                port: 1433
+                database: "AdventureWorks2014"
+                schema: "dbo"
+                user: "sa"
+                password: "not_used_for_compile"
+                encrypt: false
+                trust_cert: true
+                threads: 2
+          YAML
+
       - name: Install dependencies
         run: |
           cd dbt
@@ -116,8 +155,7 @@ jobs:
       - name: Generate documentation
         run: |
           cd dbt
-          dbt docs generate --profiles-dir . || true
-        continue-on-error: true
+          dbt docs generate --profiles-dir .
 
       - name: Upload documentation
         uses: actions/upload-artifact@v4
@@ -128,3 +166,70 @@ jobs:
             dbt/target/manifest.json
             dbt/target/index.html
           retention-days: 30
+
+  dbt-test-pr:
+    name: DBT Tests (Pull Request)
+    runs-on: ubuntu-latest
+    needs: [lint-sql, lint-python]
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install DBT + ODBC deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y unixodbc unixodbc-dev
+          pip install dbt-sqlserver pyodbc
+
+      - name: Fail if required DB secrets are missing
+        env:
+          STAGING_SQL_SERVER: ${{ secrets.STAGING_SQL_SERVER }}
+          STAGING_SQL_USER: ${{ secrets.STAGING_SQL_USER }}
+          STAGING_SQL_PASSWORD: ${{ secrets.STAGING_SQL_PASSWORD }}
+        run: |
+          if [[ -z "${STAGING_SQL_SERVER}" || -z "${STAGING_SQL_USER}" || -z "${STAGING_SQL_PASSWORD}" ]]; then
+            echo "Missing required secrets for PR DBT tests: STAGING_SQL_SERVER, STAGING_SQL_USER, STAGING_SQL_PASSWORD"
+            exit 1
+          fi
+
+      - name: Create dbt profiles.yml (staging for PR tests)
+        shell: bash
+        env:
+          STAGING_SQL_SERVER: ${{ secrets.STAGING_SQL_SERVER }}
+          STAGING_SQL_USER: ${{ secrets.STAGING_SQL_USER }}
+          STAGING_SQL_PASSWORD: ${{ secrets.STAGING_SQL_PASSWORD }}
+        run: |
+          cat > dbt/profiles.yml <<'YAML'
+          adventureworks:
+            target: staging
+            outputs:
+              staging:
+                type: sqlserver
+                driver: "ODBC Driver 18 for SQL Server"
+                server: "${STAGING_SQL_SERVER}"
+                port: 1433
+                database: "AdventureWorks2014_Staging"
+                schema: "dbo"
+                user: "${STAGING_SQL_USER}"
+                password: "${STAGING_SQL_PASSWORD}"
+                encrypt: false
+                trust_cert: true
+                threads: 4
+          YAML
+
+      - name: Install DBT dependencies
+        run: |
+          cd dbt
+          dbt deps --profiles-dir . --target staging
+
+      - name: Compile, run, and test DBT models
+        run: |
+          cd dbt
+          dbt build --profiles-dir . --target staging

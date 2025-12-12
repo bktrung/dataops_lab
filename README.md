@@ -2,6 +2,7 @@
 
 ![DBT CI](https://github.com/bktrung/dbt-airflow-dataops/workflows/DBT%20CI%20Pipeline/badge.svg)
 ![Python Quality](https://github.com/bktrung/dbt-airflow-dataops/workflows/Python%20Code%20Quality/badge.svg)
+[![Deploy](https://github.com/bktrung/dbt-airflow-dataops/actions/workflows/deploy.yml/badge.svg)](https://github.com/bktrung/dbt-airflow-dataops/actions/workflows/deploy.yml)
 
 # DBT and Airflow Data Pipeline Project
 
@@ -475,12 +476,12 @@ cleaned as (
         -- Calculated fields
         unit_price * order_qty as gross_amount,
         line_total / nullif(order_qty, 0) as effective_unit_price,
-        case 
+        case
             when unit_price_discount > 0 then 1
             else 0
         end as has_discount,
         (unit_price * order_qty) * (1 - coalesce(unit_price_discount, 0)) as line_net,
-        case 
+        case
             when online_order_flag = 1 then 'Online'
             else 'Offline'
         end as order_channel,
@@ -865,6 +866,9 @@ Common issues and solutions:
    - Check if all containers are running: `docker compose ps`
    - Verify network connectivity: `docker network ls`
    - Ensure Docker socket is mounted: `/var/run/docker.sock`
+  - If Airflow tasks fail with `permission denied` for `/var/run/docker.sock`, set the Airflow services to run with the Docker socket group id:
+    - Host check: `stat -c 'gid=%g group=%G perms=%A' /var/run/docker.sock`
+    - Compose: `user: "50000:<DOCKER_SOCK_GID>"` for `airflow-webserver` and `airflow-scheduler`
 
 2. **DBT Errors**
    - Check `profiles.yml` configuration

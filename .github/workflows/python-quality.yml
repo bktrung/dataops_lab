@@ -32,15 +32,12 @@ jobs:
 
       - name: Run Black formatter check
         run: |
-          black --check --line-length=120 airflow/dags/ || true
-        continue-on-error: true
+          black --check --line-length=120 airflow/dags/
 
       - name: Run Flake8
         run: |
-          flake8 airflow/dags/ --max-line-length=120 --statistics || true
-        continue-on-error: true
+          flake8 airflow/dags/ --max-line-length=120 --statistics
 
       - name: Run Pylint
         run: |
-          pylint airflow/dags/ --max-line-length=120 || true
-        continue-on-error: true
+          pylint airflow/dags/ --max-line-length=120

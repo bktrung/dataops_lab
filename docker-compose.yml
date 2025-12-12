@@ -36,6 +36,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    user: "50000:984"
     environment:
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor
@@ -59,6 +60,7 @@ services:
       dockerfile: Dockerfile
     depends_on:
       - airflow-webserver
+    user: "50000:984"
     environment:
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
       - AIRFLOW__CORE__EXECUTOR=LocalExecutor

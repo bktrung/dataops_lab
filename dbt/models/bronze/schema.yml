@@ -114,11 +114,15 @@ models:
               to: ref('brnz_customers')
               field: CustomerID
 
+      - name: territory_id
+        description: "Foreign key to sales territory"
+        tests:
+          - relationships:
+              to: ref('brnz_territory')
+              field: territory_id
+
       - name: sales_person_id
         description: "Sales person ID"
-
-      - name: territory_id
-        description: "Territory ID"
 
       - name: tax_amount
         description: "Tax amount"
@@ -149,11 +153,15 @@ models:
         description: "Order detail ID"
         tests:
           - not_null
+          - unique
 
       - name: product_id
         description: "Product ID"
         tests:
           - not_null
+          - relationships:
+              to: ref('brnz_products')
+              field: ProductID
 
       - name: order_qty
         description: "Order quantity"

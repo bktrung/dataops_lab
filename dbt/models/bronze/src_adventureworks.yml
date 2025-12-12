@@ -11,10 +11,26 @@ sources:
     tables:
       - name: SalesOrderHeader
         description: Contains the sales order header information
+        columns:
+          - name: SalesOrderID
+            description: Primary key
+            tests:
+              - unique
+              - not_null
+          - name: CustomerID
+            description: Customer foreign key
+            tests:
+              - not_null
       - name: SalesOrderDetail
         description: Contains the sales order detail line items
       - name: Customer
         description: Contains customer information
+        columns:
+          - name: CustomerID
+            description: Primary key
+            tests:
+              - unique
+              - not_null
       - name: SalesTerritory
         description: Sales territories and groupings
       - name: SalesPerson
