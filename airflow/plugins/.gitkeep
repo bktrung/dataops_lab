@@ -1,0 +1,4 @@
+#
+# Placeholder to ensure plugins directory exists in the Airflow image build.
+# Add custom Airflow plugins here if needed.
+
