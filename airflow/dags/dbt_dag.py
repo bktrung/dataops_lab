@@ -41,7 +41,6 @@ with DAG(
     - Add Airflow alerting/email/Slack on failure at the DAG or task level if needed.
     """,
 ) as dag:
-
     # --- Bronze Layer ---
     dbt_run_bronze = BashOperator(
         task_id="dbt_run_bronze",
