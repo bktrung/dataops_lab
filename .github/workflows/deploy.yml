@@ -112,7 +112,7 @@ jobs:
                 type: sqlserver
                 driver: "ODBC Driver 17 for SQL Server"
                 server: "{{ env_var('STAGING_SQL_SERVER') }}"
-                port: "{{ env_var('STAGING_SQL_PORT', '1433') }}"
+                port: {{ env_var('STAGING_SQL_PORT', '1433') | int }}
                 database: "AdventureWorks2014"
                 schema: "dbo"
                 user: "{{ env_var('STAGING_SQL_USER') }}"
@@ -276,7 +276,7 @@ jobs:
                 type: sqlserver
                 driver: "ODBC Driver 17 for SQL Server"
                 server: "{{ env_var('PROD_SQL_SERVER') }}"
-                port: "{{ env_var('PROD_SQL_PORT', '1433') }}"
+                port: {{ env_var('PROD_SQL_PORT', '1433') | int }}
                 database: "AdventureWorks2014_Prod"
                 schema: "dbo"
                 user: "{{ env_var('PROD_SQL_USER') }}"
