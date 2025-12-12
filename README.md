@@ -114,24 +114,44 @@ dataops_lab/
      - `dbt_run_bronze`: Runs bronze models
      - `dbt_test_bronze`: Tests bronze models
      - `log_complete`: Logs completion with execution metrics
+     - `test_alert_failure`: Optional test task for alert system validation
    - **Features**:
      - Pipeline logging with execution time tracking
      - Alert testing capability
      - XCom integration for data passing between tasks
+     - Retries: 1 attempt with 5-minute delay
 
-3. **`data_quality_dag`** (Data Quality Validation):
-   - **Purpose**: Separate DAG for data quality checks
-   - **Features**: Comprehensive data validation workflows
+3. **`data_quality_validation`** (Data Quality Validation DAG):
+   - **Purpose**: Separate DAG for Great Expectations data quality checks
+   - **Schedule**: Every 6 hours (`0 */6 * * *`)
+   - **Tasks**:
+     - `validate_customer_data`: Runs Great Expectations checkpoint for customer data
+     - `validate_sales_order_data`: Runs Great Expectations checkpoint for sales order data
+     - `generate_data_docs`: Generates Great Expectations data documentation
+   - **Dependencies**: `[validate_customers, validate_orders] >> generate_docs`
+   - **Features**:
+     - Uses Great Expectations DataContext
+     - Runs checkpoints from `/opt/airflow/dbt/great_expectations`
+     - Automatically fails task if validation fails
+     - Generates data documentation after validations
 
 **Utility Modules (`dags/utils/`):**
 - **`alerting.py`**: AlertManager class for failure notifications
-  - Supports Slack webhook integration
-  - Formats error messages with context
-  - Handles alert failures gracefully
+  - Supports Slack webhook integration via `SLACK_WEBHOOK_URL` environment variable
+  - Formats error messages with context (severity levels: info, warning, error, critical)
+  - Handles alert failures gracefully (prints to console if webhook unavailable)
+  - Methods:
+    - `send_slack_alert()`: Generic Slack alert sender
+    - `alert_pipeline_failure()`: Pipeline failure notifications
+    - `alert_test_failure()`: Data quality test failure notifications
+    - `alert_slow_pipeline()`: Performance threshold alerts
 - **`logging_utils.py`**: DataOpsLogger for structured logging
-  - Event logging
-  - Metric tracking
+  - Event logging with timestamps and context
+  - Metric tracking (values with units)
   - Execution time measurement
+  - Helper functions:
+    - `setup_logger()`: Configure logger with console/file handlers
+    - `log_task_execution()`: Log task execution details
 
 **Logs:**
 - **Purpose**: Contains Airflow execution logs
@@ -147,11 +167,15 @@ dataops_lab/
   - `brnz_products.sql`: Product data with subcategory information
   - `brnz_sales_orders.sql`: Sales order header and detail combined
   - `brnz_territory.sql`: Sales territory information
+  - `brnz_example.sql`: Example/template model
+- **Configuration Files**:
+  - `schema.yml`: Model tests and column documentation
+  - `src_adventureworks.yml`: Source table definitions with freshness checks
 - **Materialization**: Views (for flexibility and freshness)
 - **Features**:
   - Basic column renaming and standardization
   - Source freshness checks configured (warn after 12h, error after 24h)
-  - Comprehensive schema tests (unique, not_null, accepted_values)
+  - Comprehensive schema tests (unique, not_null, accepted_values, relationships, positive_values, no_future_dates)
   - All columns documented with descriptions
 
 **Silver Layer (`models/silver/`):**
