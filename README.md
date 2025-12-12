@@ -104,7 +104,7 @@ dataops_lab/
      - Retries: 2 attempts
      - Retry delay: 2 minutes
      - Failure callback: `notify_failure()` sends alerts via AlertManager
-   - **Documentation**: Comprehensive DAG documentation in `doc_md`
+   - **Documentation**: Comprehensive DAG documentation via `doc_md` parameter (inline markdown in DAG definition)
 
 2. **`dbt_bronze_layer_test_alert_layer`** (Bronze Layer Testing DAG):
    - **Purpose**: Dedicated DAG for bronze layer testing and monitoring
@@ -829,7 +829,7 @@ We use containers for several important reasons:
 - ✅ Task dependencies properly configured (Bronze → Silver → Gold → Test)
 - ✅ Error handling with retries (2 attempts, 2-minute delay)
 - ✅ Failure notifications via AlertManager integration
-- ✅ Comprehensive DAG documentation
+- ✅ Comprehensive DAG documentation (via `doc_md` parameter)
 - ✅ Scheduling configured (daily and periodic)
 - ✅ Logging utilities for monitoring (DataOpsLogger)
 
