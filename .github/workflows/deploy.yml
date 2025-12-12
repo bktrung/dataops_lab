@@ -86,33 +86,7 @@ jobs:
           fi
 
           echo "Testing SQL login (quick timeout)..."
-          if ! timeout 10 python - <<'PY'
-            import os
-            import pyodbc
-
-            server = os.environ["STAGING_SQL_SERVER"]
-            port = os.environ.get("STAGING_SQL_PORT", "1433")
-            user = os.environ["STAGING_SQL_USER"]
-            password = os.environ["STAGING_SQL_PASSWORD"]
-
-            conn_str = (
-              "DRIVER={ODBC Driver 17 for SQL Server};"
-              f"SERVER={server},{port};"
-              "DATABASE=AdventureWorks2014;"
-              f"UID={user};PWD={password};"
-              "TrustServerCertificate=yes;"
-              "Connection Timeout=5;"
-            )
-
-            try:
-              with pyodbc.connect(conn_str) as conn:
-                cur = conn.cursor()
-                cur.execute("SELECT 1")
-                cur.fetchone()
-              print("Login OK")
-            except Exception as e:
-              raise SystemExit(str(e))
-            PY
+            if ! timeout 10 python3 -c 'import os, pyodbc; server=os.environ["STAGING_SQL_SERVER"]; port=os.environ.get("STAGING_SQL_PORT","1433"); user=os.environ["STAGING_SQL_USER"]; password=os.environ["STAGING_SQL_PASSWORD"]; conn_str=("DRIVER={ODBC Driver 17 for SQL Server};SERVER=%s,%s;DATABASE=AdventureWorks2014;UID=%s;PWD=%s;TrustServerCertificate=yes;Connection Timeout=5;" % (server,port,user,password)); conn=pyodbc.connect(conn_str); cur=conn.cursor(); cur.execute("SELECT 1"); cur.fetchone(); conn.close(); print("Login OK")';
           then
             echo "::warning::SQL login test failed. Skipping staging deployment."
             echo "can_deploy=false" >> "$GITHUB_OUTPUT"
@@ -276,33 +250,7 @@ jobs:
           fi
 
           echo "Testing SQL login (quick timeout)..."
-          if ! timeout 10 python - <<'PY'
-            import os
-            import pyodbc
-
-            server = os.environ["PROD_SQL_SERVER"]
-            port = os.environ.get("PROD_SQL_PORT", "1433")
-            user = os.environ["PROD_SQL_USER"]
-            password = os.environ["PROD_SQL_PASSWORD"]
-
-            conn_str = (
-              "DRIVER={ODBC Driver 17 for SQL Server};"
-              f"SERVER={server},{port};"
-              "DATABASE=AdventureWorks2014_Prod;"
-              f"UID={user};PWD={password};"
-              "TrustServerCertificate=yes;"
-              "Connection Timeout=5;"
-            )
-
-            try:
-              with pyodbc.connect(conn_str) as conn:
-                cur = conn.cursor()
-                cur.execute("SELECT 1")
-                cur.fetchone()
-              print("Login OK")
-            except Exception as e:
-              raise SystemExit(str(e))
-            PY
+            if ! timeout 10 python3 -c 'import os, pyodbc; server=os.environ["PROD_SQL_SERVER"]; port=os.environ.get("PROD_SQL_PORT","1433"); user=os.environ["PROD_SQL_USER"]; password=os.environ["PROD_SQL_PASSWORD"]; conn_str=("DRIVER={ODBC Driver 17 for SQL Server};SERVER=%s,%s;DATABASE=AdventureWorks2014_Prod;UID=%s;PWD=%s;TrustServerCertificate=yes;Connection Timeout=5;" % (server,port,user,password)); conn=pyodbc.connect(conn_str); cur=conn.cursor(); cur.execute("SELECT 1"); cur.fetchone(); conn.close(); print("Login OK")';
           then
             echo "::warning::SQL login test failed. Skipping production deployment."
             echo "can_deploy=false" >> "$GITHUB_OUTPUT"
