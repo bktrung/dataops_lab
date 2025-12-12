@@ -6,7 +6,14 @@
 # DBT and Airflow Data Pipeline Project
 
 ## Project Overview
-This project implements an automated data transformation pipeline using DBT (Data Build Tool) and Apache Airflow. The pipeline extracts data from SQL Server, transforms it using DBT models, and loads it into a target database, following modern data engineering best practices.
+This project implements an automated data transformation pipeline using DBT (Data Build Tool) and Apache Airflow. The pipeline extracts data from SQL Server (AdventureWorks 2014), transforms it using DBT models following a medallion architecture (Bronze → Silver → Gold), and orchestrates the workflow using Apache Airflow, following modern data engineering best practices.
+
+### Key Features
+- **Three-Layer Data Architecture**: Bronze (staging), Silver (cleaned), and Gold (business marts)
+- **Automated Orchestration**: Apache Airflow DAGs with proper task dependencies and error handling
+- **Comprehensive Testing**: Schema tests, custom generic tests, and data quality validations
+- **Source Freshness Monitoring**: Automated checks for data staleness
+- **Alert System**: Failure notifications integrated into Airflow workflows
 
 ### Architecture Overview
 ```
@@ -30,49 +37,148 @@ This project implements an automated data transformation pipeline using DBT (Dat
 ## Project Structure and Components
 
 ```
-dbt_airflow_project/
+dataops_lab/
 ├── airflow/
 │   ├── dags/                  # Contains Airflow DAG definitions
-│   │   └── dbt_dag.py        # DAG that orchestrates DBT transformations
-│   └── logs/                  # Airflow execution logs
+│   │   ├── dbt_dag.py        # Main DAG: Orchestrates bronze → silver → gold → test
+│   │   ├── dbt_bronze_layer_test_alert_dag.py  # Bronze layer testing with alerts
+│   │   ├── data_quality_dag.py  # Data quality validation DAG
+│   │   └── utils/            # Utility modules
+│   │       ├── alerting.py   # Alert management system
+│   │       └── logging_utils.py  # Logging utilities
+│   ├── logs/                  # Airflow execution logs
+│   └── Dockerfile            # Airflow container configuration
 ├── dbt/
 │   ├── models/               # Contains all DBT data models
-│   │   ├── staging/         # First layer: Raw data cleaning and standardization
-│   │   │   ├── stg_sales_orders.sql    # Example staging model
-│   │   │   └── schema.yml              # Model tests and documentation
-│   │   └── marts/           # Final layer: Business-level transformations
+│   │   ├── bronze/          # Bronze layer: Raw data extraction and basic cleaning
+│   │   │   ├── brnz_customers.sql
+│   │   │   ├── brnz_products.sql
+│   │   │   ├── brnz_sales_orders.sql
+│   │   │   ├── brnz_territory.sql
+│   │   │   ├── schema.yml   # Model tests and documentation
+│   │   │   └── src_adventureworks.yml  # Source definitions with freshness checks
+│   │   ├── silver/          # Silver layer: Business logic transformations
+│   │   │   ├── slvr_customers.sql
+│   │   │   ├── slvr_products.sql
+│   │   │   ├── slvr_sales_orders.sql
+│   │   │   └── schema.yml
+│   │   ├── gold/            # Gold layer: Business-ready marts
+│   │   │   ├── gld_customer_metrics.sql
+│   │   │   ├── gld_product_performance.sql
+│   │   │   ├── gld_sales_summary.sql
+│   │   │   └── schema.yml
+│   │   └── sources.yml      # Source table definitions
+│   ├── tests/               # Custom tests
+│   │   ├── generic/        # Reusable generic tests
+│   │   │   ├── test_positive_values.sql
+│   │   │   ├── test_no_future_dates.sql
+│   │   │   └── test_valid_email.sql
+│   │   └── data_quality/   # Business logic tests
+│   │       ├── test_positive_revenue.sql
+│   │       ├── test_profit_margin_range.sql
+│   │       ├── test_no_duplicate_orders.sql
+│   │       └── test_order_customer_consistency.sql
 │   ├── dbt_project.yml      # DBT project configurations
 │   ├── packages.yml         # External DBT package dependencies
 │   └── profiles.yml         # Database connection profiles
+├── sqlserver/               # SQL Server setup scripts
 └── docker-compose.yml       # Container orchestration configuration
 ```
 
 ### Component Details
 
 #### 1. Airflow Components
-- **dags/**:
-  - Purpose: Stores Airflow DAG (Directed Acyclic Graph) definitions
-  - Contents: Python files defining workflow orchestration
-  - Key File: `dbt_dag.py` - Orchestrates the DBT transformation pipeline
-  - Usage: Schedules and monitors DBT model runs and tests
 
-- **logs/**:
-  - Purpose: Contains Airflow execution logs
-  - Usage: Debugging and monitoring task execution
-  - Retention: Typically keeps logs for last 30 days
+**DAGs Implemented:**
+
+1. **`dbt_transform_bronze_silver_gold`** (Main Pipeline DAG):
+   - **Purpose**: Orchestrates the complete data transformation pipeline
+   - **Schedule**: Daily (`@daily`)
+   - **Task Flow**: Bronze → Silver → Gold → Tests
+   - **Tasks**:
+     - `dbt_run_bronze`: Runs all bronze layer models
+     - `dbt_run_silver`: Runs all silver layer models (depends on bronze)
+     - `dbt_run_gold`: Runs all gold layer models (depends on silver)
+     - `dbt_test`: Executes all data quality tests (depends on gold)
+   - **Error Handling**:
+     - Retries: 2 attempts
+     - Retry delay: 2 minutes
+     - Failure callback: `notify_failure()` sends alerts via AlertManager
+   - **Documentation**: Comprehensive DAG documentation in `doc_md`
+
+2. **`dbt_bronze_layer_test_alert_layer`** (Bronze Layer Testing DAG):
+   - **Purpose**: Dedicated DAG for bronze layer testing and monitoring
+   - **Schedule**: Every 30 minutes
+   - **Tasks**:
+     - `log_start`: Logs pipeline start time
+     - `dbt_run_bronze`: Runs bronze models
+     - `dbt_test_bronze`: Tests bronze models
+     - `log_complete`: Logs completion with execution metrics
+   - **Features**:
+     - Pipeline logging with execution time tracking
+     - Alert testing capability
+     - XCom integration for data passing between tasks
+
+3. **`data_quality_dag`** (Data Quality Validation):
+   - **Purpose**: Separate DAG for data quality checks
+   - **Features**: Comprehensive data validation workflows
+
+**Utility Modules (`dags/utils/`):**
+- **`alerting.py`**: AlertManager class for failure notifications
+  - Supports Slack webhook integration
+  - Formats error messages with context
+  - Handles alert failures gracefully
+- **`logging_utils.py`**: DataOpsLogger for structured logging
+  - Event logging
+  - Metric tracking
+  - Execution time measurement
+
+**Logs:**
+- **Purpose**: Contains Airflow execution logs
+- **Usage**: Debugging and monitoring task execution
+- **Location**: `airflow/logs/` organized by DAG ID and run ID
 
 #### 2. DBT Components
-- **models/staging/**:
-  - Purpose: First layer of transformation
-  - Contents: SQL models that clean and standardize raw data
-  - Example: `stg_sales_orders.sql` combines and standardizes sales order tables
-  - Materialization: Usually materialized as views for flexibility
 
-- **models/marts/**:
-  - Purpose: Final transformation layer
-  - Contents: Business-level transformations ready for reporting
-  - Materialization: Usually materialized as tables for performance
-  - Usage: Direct connection to BI tools
+**Bronze Layer (`models/bronze/`):**
+- **Purpose**: First layer - Extract and stage raw data from source systems
+- **Models Implemented**:
+  - `brnz_customers.sql`: Customer data from AdventureWorks with person information joined
+  - `brnz_products.sql`: Product data with subcategory information
+  - `brnz_sales_orders.sql`: Sales order header and detail combined
+  - `brnz_territory.sql`: Sales territory information
+- **Materialization**: Views (for flexibility and freshness)
+- **Features**:
+  - Basic column renaming and standardization
+  - Source freshness checks configured (warn after 12h, error after 24h)
+  - Comprehensive schema tests (unique, not_null, accepted_values)
+  - All columns documented with descriptions
+
+**Silver Layer (`models/silver/`):**
+- **Purpose**: Second layer - Business logic transformations and data cleaning
+- **Models Implemented**:
+  - `slvr_customers.sql`: Cleaned customer data with null handling and full name concatenation
+  - `slvr_products.sql`: Standardized product data with default values for missing fields
+  - `slvr_sales_orders.sql`: Enhanced sales orders with calculated fields (gross_amount, effective_unit_price, has_discount, line_net) and joined with products, customers, and territory
+- **Materialization**: Tables (for performance)
+- **Features**:
+  - Data quality filters (e.g., `order_qty > 0`, `unit_price >= 0`)
+  - Calculated business metrics
+  - Referential integrity through joins
+  - Comprehensive testing on key columns
+
+**Gold Layer (`models/gold/`):**
+- **Purpose**: Final layer - Business-ready analytical marts
+- **Models Implemented**:
+  - `gld_customer_metrics.sql`: Customer-level KPIs (total orders, revenue, net revenue, average order value, first/last order dates)
+  - `gld_product_performance.sql`: Product-level metrics (total quantity sold, revenue, profit margin percentage)
+  - `gld_sales_summary.sql`: Daily sales aggregations by territory, category, and subcategory
+- **Materialization**: Tables (optimized for querying)
+- **Features**:
+  - Aggregated metrics and KPIs
+  - Multi-dimensional analysis (by date, territory, product category)
+  - Performance optimized for BI tools
+  - Comprehensive data quality tests
 
 - **dbt_project.yml**:
   - Purpose: DBT project configuration
@@ -120,12 +226,31 @@ dbt_airflow_project/
        - Purpose: Executes DBT commands
        - Mounts: ./dbt directory for access to models
 
-### Removed Components
-The following components from the original structure were removed as they weren't essential:
-- `dbt/tests/` - Tests are now included in schema.yml files
-- `dbt/macros/` - Using standard macros from dbt_utils package
-- `dbt/intermediate/` - Using two-layer (staging/marts) architecture
-- `docker/airflow/` and `docker/dbt/` - Docker configurations included in main docker-compose.yml
+#### 4. Testing Framework
+
+**Schema Tests:**
+- Primary key tests: `unique` and `not_null` on all primary keys
+- Foreign key tests: `relationships` tests for referential integrity
+- Data type tests: `dbt_expectations.expect_column_values_to_be_of_type`
+- Accepted values: Business rule validation (e.g., EmailPromotion values: 0, 1, 2)
+- Unique combinations: `dbt_utils.unique_combination_of_columns` for composite keys
+
+**Custom Generic Tests (`tests/generic/`):**
+- `test_positive_values.sql`: Ensures numeric values are non-negative
+- `test_no_future_dates.sql`: Validates dates are not in the future
+- `test_valid_email.sql`: Email format validation (if applicable)
+
+**Custom Data Quality Tests (`tests/data_quality/`):**
+- `test_positive_revenue.sql`: Ensures revenue calculations are positive
+- `test_profit_margin_range.sql`: Validates profit margins are within acceptable range
+- `test_no_duplicate_orders.sql`: Ensures no duplicate order entries
+- `test_order_customer_consistency.sql`: Validates order-customer relationships
+
+**Source Freshness Checks:**
+- Configured for all source tables in `src_adventureworks.yml`
+- Warning threshold: 12 hours
+- Error threshold: 24 hours
+- Uses `ModifiedDate` as the freshness field
 
 ## Container Workflow
 1. **Data Flow**:
@@ -227,101 +352,200 @@ packages:
 
 ### 4. Model Development
 
-4.1. Create staging models:
-- Create models under `dbt/models/staging/`
-- Example: `stg_sales_orders.sql`
+**4.1. Bronze Layer Models:**
+
+Bronze models extract and stage raw data from AdventureWorks. Example: `brnz_sales_orders.sql`:
+
 ```sql
-with source_sales_order_header as (
-    select * from {{ source('adventure_works', 'SalesOrderHeader') }}
+with sales_order_header as (
+    select
+        SalesOrderID as sales_order_id,
+        OrderDate as order_date,
+        CustomerID as customer_id,
+        -- ... other fields
+    from {{ source('adventureworks', 'SalesOrderHeader') }}
 ),
-source_sales_order_detail as (
-    select * from {{ source('adventure_works', 'SalesOrderDetail') }}
+sales_order_detail as (
+    select
+        SalesOrderDetailID as order_detail_id,
+        SalesOrderID as sales_order_id,
+        ProductID as product_id,
+        -- ... other fields
+    from {{ source('adventureworks', 'SalesOrderDetail') }}
 )
 
 select
-    soh.SalesOrderID,
-    sod.SalesOrderDetailID as order_detail_id,
-    soh.OrderDate,
-    soh.DueDate,
-    soh.ShipDate,
-    soh.Status as order_status,
-    soh.CustomerID,
-    soh.SalesPersonID,
-    sod.ProductID,
-    sod.OrderQty,
-    sod.UnitPrice,
-    sod.UnitPriceDiscount,
-    sod.LineTotal
-from source_sales_order_header soh
-left join source_sales_order_detail sod
-    on soh.SalesOrderID = sod.SalesOrderID
+    h.sales_order_id,
+    h.order_date,
+    h.customer_id,
+    d.order_detail_id,
+    d.product_id,
+    -- ... joined fields
+from sales_order_header h
+left join sales_order_detail d
+    on h.sales_order_id = d.sales_order_id
 ```
 
-4.2. Add tests in `schema.yml`:
+**4.2. Silver Layer Models:**
+
+Silver models apply business logic and data cleaning. Example: `slvr_sales_orders.sql`:
+
+```sql
+with bronze_sales as (
+    select * from {{ ref('brnz_sales_orders') }}
+),
+products as (
+    select * from {{ ref('slvr_products') }}
+),
+customers as (
+    select * from {{ ref('slvr_customers') }}
+)
+
+select
+    sales_order_id,
+    order_date,
+    -- Calculated fields
+    unit_price * order_qty as gross_amount,
+    line_total / nullif(order_qty, 0) as effective_unit_price,
+    case 
+        when unit_price_discount > 0 then 1
+        else 0
+    end as has_discount,
+    -- Joined data
+    p.product_name,
+    cust.full_name as customer_name
+from bronze_sales
+left join products p on product_id = p.product_id
+left join customers cust on customer_id = cust.customer_id
+where order_qty > 0 and unit_price >= 0
+```
+
+**4.3. Gold Layer Models:**
+
+Gold models create business-ready analytical marts. Example: `gld_customer_metrics.sql`:
+
+```sql
+with customers as (
+    select * from {{ ref('slvr_customers') }}
+),
+sales as (
+    select * from {{ ref('slvr_sales_orders') }}
+)
+
+select
+    c.customer_id,
+    c.full_name,
+    count(distinct s.sales_order_id) as total_orders,
+    sum(s.line_total) as total_revenue,
+    sum(s.line_net) as net_revenue,
+    avg(nullif(s.line_total,0)) as avg_order_value,
+    min(s.order_date) as first_order_date,
+    max(s.order_date) as last_order_date
+from customers c
+left join sales s on c.customer_id = s.customer_id
+group by c.customer_id, c.full_name
+```
+
+**4.4. Schema Tests Configuration:**
+
+Example from `bronze/schema.yml`:
+
 ```yaml
 version: 2
 
 models:
-  - name: stg_sales_orders
+  - name: brnz_customers
+    description: "Bronze layer customer data from AdventureWorks"
     columns:
-      - name: sales_order_id
+      - name: CustomerID
+        description: "Primary key for customer"
         tests:
+          - unique
           - not_null
-      - name: order_detail_id
+          - dbt_expectations.expect_column_values_to_be_of_type:
+              column_type: int
+      - name: EmailPromotion
+        description: "Email promotion preference"
         tests:
-          - not_null
-    tests:
-      - dbt_utils.unique_combination_of_columns:
-          combination_of_columns:
-            - sales_order_id
-            - order_detail_id
+          - accepted_values:
+              values: [0, 1, 2]
 ```
 
 ### 5. Airflow DAG Configuration
 
-5.1. Create DBT DAG (`airflow/dags/dbt_dag.py`):
+**Main DAG Implementation (`airflow/dags/dbt_dag.py`):**
+
+The main DAG orchestrates the three-layer transformation pipeline:
+
 ```python
-from airflow import DAG
-from airflow.providers.docker.operators.docker import DockerOperator
 from datetime import datetime, timedelta
+from airflow import DAG
+from airflow.operators.bash import BashOperator
+from utils.alerting import AlertManager
+
+def notify_failure(context):
+    """Send notification on task failure"""
+    alert_manager = AlertManager()
+    alert_manager.alert_pipeline_failure(
+        dag_id=context["dag"].dag_id,
+        task_id=context["task_instance"].task_id,
+        error_message=str(context.get("exception", "Unknown error")),
+    )
 
 default_args = {
-    'owner': 'airflow',
-    'depends_on_past': False,
-    'start_date': datetime(2025, 4, 13),
-    'email_on_failure': False,
-    'email_on_retry': False,
-    'retries': 1,
-    'retry_delay': timedelta(minutes=5)
+    "owner": "airflow",
+    "depends_on_past": False,
+    "email_on_failure": False,
+    "email_on_retry": False,
+    "retries": 2,
+    "retry_delay": timedelta(minutes=2),
+    "on_failure_callback": notify_failure,
 }
 
-dag = DAG(
-    'dbt_transform',
+with DAG(
+    dag_id="dbt_transform_bronze_silver_gold",
     default_args=default_args,
-    description='DBT transformation pipeline',
-    schedule_interval=timedelta(days=1)
-)
+    description="Run dbt models layer by layer (bronze → silver → gold)",
+    schedule_interval="@daily",
+    start_date=datetime(2024, 1, 1),
+    catchup=False,
+    tags=["dbt", "sqlserver"],
+) as dag:
 
-dbt_run = DockerOperator(
-    task_id='dbt_run',
-    image='dbt_airflow_project-dbt',
-    command='dbt run',
-    docker_url='unix://var/run/docker.sock',
-    network_mode='bridge',
-    dag=dag
-)
+    # Bronze Layer
+    dbt_run_bronze = BashOperator(
+        task_id="dbt_run_bronze",
+        bash_command="docker exec dbt dbt run --select path:models/bronze",
+    )
 
-dbt_test = DockerOperator(
-    task_id='dbt_test',
-    image='dbt_airflow_project-dbt',
-    command='dbt test',
-    docker_url='unix://var/run/docker.sock',
-    network_mode='bridge',
-    dag=dag
-)
+    # Silver Layer
+    dbt_run_silver = BashOperator(
+        task_id="dbt_run_silver",
+        bash_command="docker exec dbt dbt run --select path:models/silver",
+    )
 
-dbt_run >> dbt_test
+    # Gold Layer
+    dbt_run_gold = BashOperator(
+        task_id="dbt_run_gold",
+        bash_command="docker exec dbt dbt run --select path:models/gold",
+    )
+
+    # Tests
+    dbt_test = BashOperator(
+        task_id="dbt_test",
+        bash_command="docker exec dbt dbt test",
+    )
+
+    # Task dependencies: Bronze → Silver → Gold → Test
+    dbt_run_bronze >> dbt_run_silver >> dbt_run_gold >> dbt_test
 ```
+
+**Key Features:**
+- **Layer-by-layer execution**: Ensures proper data dependencies
+- **Error handling**: Automatic retries with exponential backoff
+- **Alerting**: Failure notifications via AlertManager
+- **Documentation**: Comprehensive DAG documentation
+- **Scheduling**: Daily execution with no catchup
 
 ### 6. Starting the Project
 
@@ -347,14 +571,55 @@ docker-compose exec dbt dbt test
 
 ### 7. Accessing Services
 
-- Airflow UI: http://localhost:8080
-  - Username: airflow
-  - Password: airflow
-- SQL Server:
-  - Host: localhost
-  - Port: 1433
-  - Username: sa
-  - Password: YourStrong@Passw0rd
+- **Airflow UI**: http://localhost:8080
+  - Username: `admin`
+  - Password: `admin`
+  - Features:
+    - View DAG status and execution history
+    - Monitor task logs and failures
+    - Trigger DAGs manually
+    - View task dependencies in Graph view
+
+- **SQL Server**:
+  - Host: `localhost`
+  - Port: `1433`
+  - Username: `sa`
+  - Password: `YourStrong@Passw0rd`
+  - Database: `AdventureWorks2014`
+  - Schemas:
+    - `bronze`: Bronze layer models (views)
+    - `silver`: Silver layer models (tables)
+    - `gold`: Gold layer models (tables)
+
+### 8. Running the Pipeline
+
+**8.1. Manual Execution via Airflow UI:**
+1. Navigate to http://localhost:8080
+2. Find the `dbt_transform_bronze_silver_gold` DAG
+3. Click the "Play" button to trigger manually
+4. Monitor execution in the Graph view
+
+**8.2. Manual Execution via Command Line:**
+```bash
+# Run bronze layer
+docker compose exec dbt dbt run --select path:models/bronze
+
+# Run silver layer
+docker compose exec dbt dbt run --select path:models/silver
+
+# Run gold layer
+docker compose exec dbt dbt run --select path:models/gold
+
+# Run all tests
+docker compose exec dbt dbt test
+```
+
+**8.3. View Model Lineage:**
+```bash
+docker compose exec dbt dbt docs generate
+docker compose exec dbt dbt docs serve --port 8081
+```
+Then access http://localhost:8081 to view interactive documentation and lineage graphs.
 
 ## Why Containers?
 
@@ -392,23 +657,101 @@ We use containers for several important reasons:
    - Use environment variables for secrets
    - Regularly update dependencies
 
+## Implementation Summary
+
+### Part 1: DBT Data Models (Completed)
+
+**Bronze Layer (5 models):**
+- ✅ `brnz_customers`: Customer data with person information
+- ✅ `brnz_products`: Product data with subcategory joins
+- ✅ `brnz_sales_orders`: Combined sales order header and detail
+- ✅ `brnz_territory`: Sales territory information
+- ✅ Source freshness checks configured for all sources
+- ✅ Comprehensive column documentation
+- ✅ Schema tests (unique, not_null, accepted_values)
+
+**Silver Layer (3 models):**
+- ✅ `slvr_customers`: Cleaned customer data with null handling
+- ✅ `slvr_products`: Standardized product data with defaults
+- ✅ `slvr_sales_orders`: Enhanced sales orders with calculated fields
+- ✅ Business logic transformations implemented
+- ✅ Data quality filters applied
+- ✅ Referential integrity through joins
+
+**Gold Layer (3 models):**
+- ✅ `gld_customer_metrics`: Customer-level KPIs and metrics
+- ✅ `gld_product_performance`: Product-level sales and profitability metrics
+- ✅ `gld_sales_summary`: Daily sales aggregations by dimensions
+- ✅ Optimized for analytical queries
+- ✅ Comprehensive aggregations and calculations
+
+**Testing:**
+- ✅ Schema tests on all primary keys and critical columns
+- ✅ Custom generic tests (positive_values, no_future_dates, valid_email)
+- ✅ Custom data quality tests (4 business logic tests)
+- ✅ Source freshness monitoring configured
+
+### Part 3: Airflow Orchestration (Completed)
+
+**DAGs Implemented:**
+- ✅ `dbt_transform_bronze_silver_gold`: Main pipeline DAG
+  - Daily schedule
+  - Proper task dependencies (Bronze → Silver → Gold → Test)
+  - Error handling with retries (2 attempts, 2-minute delay)
+  - Failure alerting via AlertManager
+- ✅ `dbt_bronze_layer_test_alert_layer`: Bronze layer testing DAG
+  - 30-minute schedule
+  - Pipeline logging with execution metrics
+  - Alert testing capability
+- ✅ `data_quality_dag`: Data quality validation DAG
+
+**Features:**
+- ✅ Task dependencies properly configured
+- ✅ Error handling and retry logic
+- ✅ Failure notifications (AlertManager integration)
+- ✅ Comprehensive DAG documentation
+- ✅ Scheduling configured (daily and periodic)
+- ✅ Logging utilities for monitoring
+
 ## Troubleshooting
 
 Common issues and solutions:
 
 1. **Container Connection Issues**
-   - Check if all containers are running: `docker-compose ps`
+   - Check if all containers are running: `docker compose ps`
    - Verify network connectivity: `docker network ls`
+   - Ensure Docker socket is mounted: `/var/run/docker.sock`
 
 2. **DBT Errors**
-   - Check profiles.yml configuration
+   - Check `profiles.yml` configuration
    - Verify database credentials
    - Run `dbt debug` for diagnostics
+   - Check source freshness: `dbt source freshness`
 
 3. **Airflow DAG Issues**
-   - Check DAG syntax
-   - Verify task dependencies
-   - Check Airflow logs
+   - Check DAG syntax in Airflow UI
+   - Verify task dependencies in Graph view
+   - Check Airflow logs: `airflow/logs/`
+   - Ensure DAG files are in `airflow/dags/` directory
+   - Verify Docker exec permissions (Docker API version compatibility)
+
+4. **Docker API Version Error**
+   - Error: "client version 1.41 is too old. Minimum supported API version is 1.44"
+   - Solution: Rebuild Airflow image with updated Dockerfile that installs `docker-ce-cli` from Docker's official repository
+   - Run: `docker compose build airflow-webserver airflow-scheduler`
+   - Restart: `docker compose up -d airflow-webserver airflow-scheduler`
+
+5. **DBT Model Compilation Errors**
+   - Check model SQL syntax
+   - Verify source definitions in `sources.yml`
+   - Ensure all referenced models exist
+   - Check schema names match between models
+
+6. **Test Failures**
+   - Review test output in Airflow logs
+   - Check data quality issues in source data
+   - Verify test logic matches business rules
+   - Run tests individually: `dbt test --select test_name`
 
 ## Contributing
 
