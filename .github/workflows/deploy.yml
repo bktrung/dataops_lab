@@ -18,7 +18,7 @@ on:
 jobs:
   deploy-staging:
     name: Deploy to Staging
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     if: github.ref == 'refs/heads/develop' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'staging')
     environment: staging
 
@@ -30,6 +30,16 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: '3.9'
+
+      - name: Install ODBC Driver 17
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends curl ca-certificates gnupg unixodbc unixodbc-dev
+          sudo mkdir -p /etc/apt/keyrings
+          curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | sudo gpg --dearmor -o /etc/apt/keyrings/microsoft.gpg
+          echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/microsoft.gpg] https://packages.microsoft.com/ubuntu/22.04/prod jammy main" | sudo tee /etc/apt/sources.list.d/mssql-release.list
+          sudo apt-get update
+          sudo ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql17
 
       - name: Install dependencies
         run: |
@@ -48,7 +58,7 @@ jobs:
             outputs:
               staging:
                 type: sqlserver
-                driver: "ODBC Driver 18 for SQL Server"
+                driver: "ODBC Driver 17 for SQL Server"
                 server: "${STAGING_SQL_SERVER}"
                 port: 1433
                 database: "AdventureWorks2014_Staging"
@@ -112,7 +122,7 @@ jobs:
 
   deploy-production:
     name: Deploy to Production
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'production')
     environment: production
     needs: []
@@ -125,6 +135,16 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: '3.9'
+
+      - name: Install ODBC Driver 17
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends curl ca-certificates gnupg unixodbc unixodbc-dev
+          sudo mkdir -p /etc/apt/keyrings
+          curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | sudo gpg --dearmor -o /etc/apt/keyrings/microsoft.gpg
+          echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/microsoft.gpg] https://packages.microsoft.com/ubuntu/22.04/prod jammy main" | sudo tee /etc/apt/sources.list.d/mssql-release.list
+          sudo apt-get update
+          sudo ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql17
 
       - name: Install dependencies
         run: |
@@ -143,7 +163,7 @@ jobs:
             outputs:
               prod:
                 type: sqlserver
-                driver: "ODBC Driver 18 for SQL Server"
+                driver: "ODBC Driver 17 for SQL Server"
                 server: "${PROD_SQL_SERVER}"
                 port: 1433
                 database: "AdventureWorks2014_Prod"
